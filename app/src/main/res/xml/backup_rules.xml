@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
     <include domain="sharedpref" path="."/>
+    <include domain="file" path="datastore/"/>
+    <!-- Break allowance must not come back with a restore -->
+    <exclude domain="file" path="datastore/doomscroll_break.preferences_pb"/>
 </full-backup-content>
