@@ -47,6 +47,7 @@ class EvalThrottleTest {
     fun screenIndex_stopsAtTheNodeCap() {
         val root = Node("root", (1..5000).map { Node("n$it") })
         val screen = Screen("pkg", root, maxNodes = 100)
-        assertEquals(100, screen.byId.size)
+        assertTrue(screen.has("n98"))
+        assertFalse("beyond the cap", screen.has("n150"))
     }
 }

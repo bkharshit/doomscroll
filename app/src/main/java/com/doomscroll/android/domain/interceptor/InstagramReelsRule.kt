@@ -70,7 +70,7 @@ class InstagramReelsRule : InterceptionRule {
         // 3. ACT: Choose the most surgical exit action
         if (isClipsTabSelected) {
             // User is on the dedicated Reels tab: click Home feed tab
-            val hasFeedTab = screen.byId[ID_FEED_TAB]?.isNotEmpty() == true
+            val hasFeedTab = screen.has(ID_FEED_TAB)
             return if (hasFeedTab) {
                 Decision.Act(
                     reason = "Instagram Reels Tab Selected",

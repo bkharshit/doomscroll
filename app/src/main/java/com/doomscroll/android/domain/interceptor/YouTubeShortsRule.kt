@@ -24,7 +24,7 @@ class YouTubeShortsRule : InterceptionRule {
 
         // 2. ACT
         if (isShortsPivotSelected) {
-            val hasHomePivot = screen.byId[ID_HOME_PIVOT]?.isNotEmpty() == true
+            val hasHomePivot = screen.has(ID_HOME_PIVOT)
             return if (hasHomePivot) {
                 Decision.Act(
                     reason = "YouTube Shorts Tab Selected",

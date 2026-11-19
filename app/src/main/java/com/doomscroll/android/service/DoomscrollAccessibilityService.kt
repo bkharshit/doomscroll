@@ -253,7 +253,10 @@ class DoomscrollAccessibilityService : AccessibilityService() {
         val started = SystemClock.elapsedRealtime()
         try {
             if (root.packageName?.toString() != pkg) return
-            val decision = interceptionEngine.evaluate(Screen(pkg, A11yUiNode(root, pool)))
+            val screen = Screen(pkg) { viewId ->
+                root.findAccessibilityNodeInfosByViewId(viewId).orEmpty().map { A11yUiNode(pool.track(it), pool) }
+            }
+            val decision = interceptionEngine.evaluate(screen)
             if (decision is Decision.Act) mainHandler.post { executeOnMain(pkg, decision) }
         } catch (e: Exception) {
             Log.e(TAG, "Error evaluating $pkg", e)

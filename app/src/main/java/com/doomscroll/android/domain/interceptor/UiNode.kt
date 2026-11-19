@@ -11,35 +11,54 @@ interface UiNode {
     val children: List<UiNode>
 }
 
-data class Screen(
+/**
+ * Read-only view of the current window for rules. Lookups are by view ID and memoised, so a rule
+ * pays only for the IDs it actually checks (detection usually stops after a few).
+ *
+ * On device the lookup is `findAccessibilityNodeInfosByViewId`, which the target app resolves in its
+ * own process; walking the whole tree node by node over IPC measured 130+ ms for Instagram's feed.
+ * Tests (and recorded fixtures) build the lookup from an in-memory tree with the secondary constructor.
+ */
+class Screen(
     val packageName: String,
-    val root: UiNode,
-    /** Traversal caps so a pathological tree can't stall the evaluation thread. */
-    val maxDepth: Int = 40,
-    val maxNodes: Int = 2500
+    private val findById: (viewId: String) -> List<UiNode>
 ) {
-    /** Built by one traversal; every rule check reads this map instead of querying the tree again. */
-    val byId: Map<String, List<UiNode>> by lazy {
-        val map = mutableMapOf<String, MutableList<UiNode>>()
-        var visited = 0
-        fun traverse(node: UiNode, depth: Int) {
-            if (depth > maxDepth || visited >= maxNodes) return
-            visited++
-            node.viewId?.let { id ->
-                map.getOrPut(id) { mutableListOf() }.add(node)
-            }
-            for (child in node.children) {
-                if (visited >= maxNodes) return
-                traverse(child, depth + 1)
-            }
-        }
-        traverse(root, 0)
-        map
-    }
+    /** Indexes an in-memory tree once, with depth and node caps. */
+    constructor(packageName: String, root: UiNode, maxDepth: Int = 40, maxNodes: Int = 2500) :
+        this(packageName, treeLookup(root, maxDepth, maxNodes))
 
-    fun visible(id: String): List<UiNode> = byId[id].orEmpty().filter { it.isVisible }
+    private val cache = HashMap<String, List<UiNode>>()
+
+    fun nodes(id: String): List<UiNode> = cache.getOrPut(id) { findById(id) }
+
+    fun has(id: String): Boolean = nodes(id).isNotEmpty()
+
+    fun visible(id: String): List<UiNode> = nodes(id).filter { it.isVisible }
 
     fun anyVisible(vararg ids: String): Boolean = ids.any { id -> visible(id).isNotEmpty() }
 
-    fun selected(id: String): Boolean = byId[id].orEmpty().any { it.isSelected && it.isVisible }
+    fun selected(id: String): Boolean = nodes(id).any { it.isSelected && it.isVisible }
+
+    companion object {
+        private fun treeLookup(root: UiNode, maxDepth: Int, maxNodes: Int): (String) -> List<UiNode> {
+            val index = indexTree(root, maxDepth, maxNodes)
+            return { id -> index[id].orEmpty() }
+        }
+
+        fun indexTree(root: UiNode, maxDepth: Int, maxNodes: Int): Map<String, List<UiNode>> {
+            val map = mutableMapOf<String, MutableList<UiNode>>()
+            var visited = 0
+            fun traverse(node: UiNode, depth: Int) {
+                if (depth > maxDepth || visited >= maxNodes) return
+                visited++
+                node.viewId?.let { id -> map.getOrPut(id) { mutableListOf() }.add(node) }
+                for (child in node.children) {
+                    if (visited >= maxNodes) return
+                    traverse(child, depth + 1)
+                }
+            }
+            traverse(root, 0)
+            return map
+        }
+    }
 }
