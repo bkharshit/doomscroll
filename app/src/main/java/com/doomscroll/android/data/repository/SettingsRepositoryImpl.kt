@@ -3,6 +3,7 @@ package com.doomscroll.android.data.repository
 import com.doomscroll.android.core.model.AppLimit
 import com.doomscroll.android.core.model.MonitoredApp
 import com.doomscroll.android.data.local.PreferencesDataStore
+import com.doomscroll.android.domain.limiter.ShieldPolicy
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 
@@ -14,6 +15,7 @@ class SettingsRepositoryImpl(
     override val isReelsInterceptionEnabled: Flow<Boolean> = dataStore.isReelsInterceptionEnabled
     override val isShortsInterceptionEnabled: Flow<Boolean> = dataStore.isShortsInterceptionEnabled
     override val isStrictLockdownEnabled: Flow<Boolean> = dataStore.isStrictLockdownEnabled
+    override val shieldPausedUntilMillis: Flow<Long?> = dataStore.shieldPausedUntilMillis
     override val breakDurationMinutes: Flow<Int> = dataStore.breakDurationMinutes
 
     override fun getAppLimits(): Flow<List<AppLimit>> {
@@ -46,7 +48,8 @@ class SettingsRepositoryImpl(
     }
 
     override suspend fun setMasterShieldEnabled(enabled: Boolean) {
-        dataStore.setMasterShieldEnabled(enabled)
+        val pausedUntil = if (enabled) null else System.currentTimeMillis() + ShieldPolicy.PAUSE_MILLIS
+        dataStore.setMasterShieldEnabled(enabled, pausedUntil)
     }
 
     override suspend fun setReelsInterceptionEnabled(enabled: Boolean) {

@@ -11,6 +11,8 @@ data class DashboardUiState(
     val isAccessibilityPermissionGranted: Boolean = false,
     val isUsagePermissionGranted: Boolean = false,
     val isStrictLockdown: Boolean = false,
+    /** Set while protection is paused: when it switches itself back on. */
+    val shieldResumesAtMillis: Long? = null,
     /** Dashboard pauses left today (0 under Strict Lockdown). */
     val globalPausesRemaining: Int = 0,
     val reelsBlockedToday: Int = 0,

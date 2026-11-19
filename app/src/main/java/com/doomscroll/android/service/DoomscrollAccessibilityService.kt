@@ -18,6 +18,7 @@ import com.doomscroll.android.DoomscrollApp
 import com.doomscroll.android.R
 import com.doomscroll.android.domain.interceptor.Decision
 import com.doomscroll.android.domain.interceptor.Screen
+import com.doomscroll.android.domain.limiter.ShieldAutoResume
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -85,6 +86,9 @@ class DoomscrollAccessibilityService : AccessibilityService() {
             scope = serviceScope,
             log = { Log.d("ForegroundTracker", it) }
         )
+
+        // A paused shield always comes back on by itself.
+        ShieldAutoResume(app.settingsRepository, serviceScope).start()
 
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)

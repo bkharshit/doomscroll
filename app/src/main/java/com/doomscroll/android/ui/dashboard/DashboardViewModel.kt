@@ -75,6 +75,12 @@ class DashboardViewModel(
         }
 
         viewModelScope.launch {
+            settingsRepository.shieldPausedUntilMillis.collect { until ->
+                _uiState.update { it.copy(shieldResumesAtMillis = until) }
+            }
+        }
+
+        viewModelScope.launch {
             metricsRepository.blockedTodayByRule.collect { byRule ->
                 blockedByPackage = byRule.entries
                     .mapNotNull { (ruleId, count) -> rulePackages[ruleId]?.let { it to count } }

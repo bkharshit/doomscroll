@@ -319,6 +319,16 @@ fun DashboardScreen(
                             }
                         }
                     }
+
+                    state.shieldResumesAtMillis?.let { until ->
+                        val time = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(until))
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Paused. Protection turns back on at $time.",
+                            fontSize = 12.sp,
+                            color = TextMutedSlate
+                        )
+                    }
                 }
             }
         }
@@ -777,8 +787,8 @@ fun DashboardScreen(
     if (showPauseShieldDialog) {
         com.doomscroll.android.ui.components.FrictionConfirmDialog(
             title = "Turn protection off?",
-            message = "Reels, Shorts and daily limits stop being enforced until you turn protection back on. " +
-                "If you only need a few minutes, use a Conscious Pause instead.",
+            message = "Reels, Shorts and daily limits stop being enforced for an hour, then protection turns " +
+                "itself back on. If you only need a few minutes, use a Conscious Pause instead.",
             waitSeconds = 10,
             confirmLabel = "Turn off",
             onConfirm = {

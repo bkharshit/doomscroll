@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.doomscroll.android.core.model.LimitPolicy
@@ -67,6 +68,7 @@ class PreferencesDataStore(private val context: Context) {
         val KEY_SHORTS_INTERCEPTION = booleanPreferencesKey("shorts_interception")
         val KEY_BREAK_DURATION_MINUTES = intPreferencesKey("break_duration_minutes")
         val KEY_STRICT_LOCKDOWN = booleanPreferencesKey("strict_lockdown")
+        val KEY_SHIELD_PAUSED_UNTIL = longPreferencesKey("shield_paused_until")
 
         // Downtime
         val KEY_DOWNTIME_ENABLED = booleanPreferencesKey("downtime_enabled")
@@ -90,6 +92,10 @@ class PreferencesDataStore(private val context: Context) {
 
     val isMasterShieldEnabled: Flow<Boolean> = context.dataStore.data.map {
         it[KEY_MASTER_SHIELD_ENABLED] ?: true
+    }
+
+    val shieldPausedUntilMillis: Flow<Long?> = context.dataStore.data.map {
+        if (it[KEY_MASTER_SHIELD_ENABLED] == false) it[KEY_SHIELD_PAUSED_UNTIL] else null
     }
 
     val isReelsInterceptionEnabled: Flow<Boolean> = context.dataStore.data.map {
@@ -140,8 +146,11 @@ class PreferencesDataStore(private val context: Context) {
         }
     }
 
-    suspend fun setMasterShieldEnabled(enabled: Boolean) {
-        context.dataStore.edit { it[KEY_MASTER_SHIELD_ENABLED] = enabled }
+    suspend fun setMasterShieldEnabled(enabled: Boolean, pausedUntilMillis: Long?) {
+        context.dataStore.edit {
+            it[KEY_MASTER_SHIELD_ENABLED] = enabled
+            if (pausedUntilMillis == null) it.remove(KEY_SHIELD_PAUSED_UNTIL) else it[KEY_SHIELD_PAUSED_UNTIL] = pausedUntilMillis
+        }
     }
 
     suspend fun setReelsInterceptionEnabled(enabled: Boolean) {

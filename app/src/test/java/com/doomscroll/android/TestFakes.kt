@@ -26,6 +26,8 @@ class MutableClock(var instant: Instant, private val zone: ZoneId = ZoneOffset.U
 class FakeSettingsRepository : SettingsRepository {
     val shield = MutableStateFlow(true)
     val strict = MutableStateFlow(false)
+    val pausedUntil = MutableStateFlow<Long?>(null)
+    var nowMillis: () -> Long = { 0L }
     val limits = MutableStateFlow(MonitoredApp.entries.associate { it.packageName to it.defaultDailyLimitMinutes })
     val blockEnabled = MutableStateFlow(MonitoredApp.entries.associate { it.packageName to true })
 
@@ -33,13 +35,17 @@ class FakeSettingsRepository : SettingsRepository {
     override val isReelsInterceptionEnabled: Flow<Boolean> = MutableStateFlow(true)
     override val isShortsInterceptionEnabled: Flow<Boolean> = MutableStateFlow(true)
     override val isStrictLockdownEnabled: Flow<Boolean> = strict
+    override val shieldPausedUntilMillis: Flow<Long?> = pausedUntil
     override val breakDurationMinutes: Flow<Int> = MutableStateFlow(5)
     override fun getAppLimits(): Flow<List<AppLimit>> = limits.map { m ->
         MonitoredApp.entries.map { AppLimit(it, blockEnabled.value[it.packageName] ?: true, m[it.packageName] ?: 0) }
     }
     override fun getLimitForPackage(packageName: String): Flow<Int> = limits.map { it[packageName] ?: 0 }
     override fun isAppBlockEnabled(packageName: String): Flow<Boolean> = blockEnabled.map { it[packageName] ?: true }
-    override suspend fun setMasterShieldEnabled(enabled: Boolean) { shield.value = enabled }
+    override suspend fun setMasterShieldEnabled(enabled: Boolean) {
+        pausedUntil.value = if (enabled) null else nowMillis() + com.doomscroll.android.domain.limiter.ShieldPolicy.PAUSE_MILLIS
+        shield.value = enabled
+    }
     override suspend fun setReelsInterceptionEnabled(enabled: Boolean) = Unit
     override suspend fun setShortsInterceptionEnabled(enabled: Boolean) = Unit
     override suspend fun setStrictLockdownEnabled(enabled: Boolean) { strict.value = enabled }
