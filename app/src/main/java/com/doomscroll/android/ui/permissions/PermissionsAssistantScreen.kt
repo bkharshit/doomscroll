@@ -37,13 +37,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.doomscroll.android.DoomscrollApp
-import kotlinx.coroutines.launch
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,11 +76,11 @@ import com.doomscroll.android.ui.theme.TextSecondarySlate
 
 @Composable
 fun PermissionsAssistantScreen(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val scope = rememberCoroutineScope()
 
     var hasAccessibility by remember { mutableStateOf(PermissionHelper.isAccessibilityServiceEnabled(context)) }
     var hasUsage by remember { mutableStateOf(PermissionHelper.isUsageAccessGranted(context)) }
@@ -90,7 +88,7 @@ fun PermissionsAssistantScreen(
     var showAccessibilityDisclosure by remember { mutableStateOf(false) }
     var showStrictOffDialog by remember { mutableStateOf(false) }
 
-    val isStrictLockdownEnabled by DoomscrollApp.instance.settingsRepository.isStrictLockdownEnabled.collectAsState(initial = false)
+    val isStrictLockdownEnabled by viewModel.isStrictLockdownEnabled.collectAsState()
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -325,9 +323,7 @@ fun PermissionsAssistantScreen(
                         checked = isStrictLockdownEnabled,
                         onCheckedChange = { enabled ->
                             if (enabled) {
-                                scope.launch {
-                                    DoomscrollApp.instance.settingsRepository.setStrictLockdownEnabled(true)
-                                }
+                                viewModel.setStrictLockdown(true)
                             } else {
                                 // Turning it off costs a 60 s wait, as the card promises.
                                 showStrictOffDialog = true
@@ -481,9 +477,7 @@ fun PermissionsAssistantScreen(
             confirmLabel = "Turn off",
             onConfirm = {
                 showStrictOffDialog = false
-                scope.launch {
-                    DoomscrollApp.instance.settingsRepository.setStrictLockdownEnabled(false)
-                }
+                viewModel.setStrictLockdown(false)
             },
             onDismiss = { showStrictOffDialog = false }
         )

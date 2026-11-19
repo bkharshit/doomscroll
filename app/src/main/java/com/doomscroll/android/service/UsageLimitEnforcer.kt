@@ -1,4 +1,6 @@
-package com.doomscroll.android.domain.limiter
+package com.doomscroll.android.service
+
+import com.doomscroll.android.domain.limiter.Enforcer
 
 import android.content.Context
 import android.content.Intent

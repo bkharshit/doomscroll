@@ -15,6 +15,8 @@ import com.doomscroll.android.R
 import com.doomscroll.android.core.model.BreakSession
 import com.doomscroll.android.core.model.MonitoredApp
 import com.doomscroll.android.domain.limiter.MindfulBreakManager
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -77,8 +79,11 @@ class BreakNotifier(
 }
 
 /** Tapping the break notification ends the break; enforcement resumes straight away. */
+@AndroidEntryPoint
 class EndBreakReceiver : BroadcastReceiver() {
+    @Inject lateinit var breakManager: MindfulBreakManager
+
     override fun onReceive(context: Context, intent: Intent?) {
-        (context.applicationContext as DoomscrollApp).breakManager.cancelBreak()
+        breakManager.cancelBreak()
     }
 }

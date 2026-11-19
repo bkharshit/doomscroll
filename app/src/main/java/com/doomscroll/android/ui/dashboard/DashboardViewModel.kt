@@ -1,10 +1,11 @@
 package com.doomscroll.android.ui.dashboard
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.doomscroll.android.core.util.PermissionHelper
+import com.doomscroll.android.domain.PermissionChecker
+import com.doomscroll.android.domain.interceptor.InterceptionEngine
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import com.doomscroll.android.data.repository.MetricsRepository
 import com.doomscroll.android.data.repository.SettingsRepository
 import com.doomscroll.android.data.repository.UsageRepository
@@ -16,15 +17,18 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class DashboardViewModel(
-    private val context: Context,
+@HiltViewModel
+class DashboardViewModel @Inject constructor(
+    private val permissionChecker: PermissionChecker,
     private val settingsRepository: SettingsRepository,
     private val usageRepository: UsageRepository,
     private val metricsRepository: MetricsRepository,
     private val breakManager: MindfulBreakManager,
-    /** Interception rule id -> package, for attributing blocks to the right app. */
-    private val rulePackages: Map<String, String>
+    interceptionEngine: InterceptionEngine
 ) : ViewModel() {
+
+    /** Interception rule id -> package, for attributing blocks to the right app. */
+    private val rulePackages: Map<String, String> = interceptionEngine.rulePackages
 
     /** Today's blocks per package, derived from per-rule counts (never estimated). */
     private var blockedByPackage: Map<String, Int> = emptyMap()
@@ -153,8 +157,8 @@ class DashboardViewModel(
     }
 
     fun refreshPermissions() {
-        val hasAccessibility = PermissionHelper.isAccessibilityServiceEnabled(context)
-        val hasUsage = PermissionHelper.isUsageAccessGranted(context)
+        val hasAccessibility = permissionChecker.isAccessibilityServiceEnabled()
+        val hasUsage = permissionChecker.isUsageAccessGranted()
 
         _uiState.update {
             it.copy(
@@ -169,22 +173,6 @@ class DashboardViewModel(
             val limitsMap = _uiState.value.appLimits.associate { it.monitoredApp.packageName to it.dailyLimitMinutes }
             val stats = usageRepository.getUsageStatsForMonitoredApps(limitsMap, blockedByPackage)
             _uiState.update { it.copy(appUsageStats = stats) }
-        }
-    }
-
-    class Factory(
-        private val context: Context,
-        private val settingsRepository: SettingsRepository,
-        private val usageRepository: UsageRepository,
-        private val metricsRepository: MetricsRepository,
-        private val breakManager: MindfulBreakManager,
-        private val rulePackages: Map<String, String>
-    ) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return DashboardViewModel(
-                context, settingsRepository, usageRepository, metricsRepository, breakManager, rulePackages
-            ) as T
         }
     }
 }

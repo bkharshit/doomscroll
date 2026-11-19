@@ -12,11 +12,18 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import com.doomscroll.android.DoomscrollApp
+import com.doomscroll.android.data.repository.SettingsRepository
+import com.doomscroll.android.domain.limiter.MindfulBreakManager
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import com.doomscroll.android.core.model.MonitoredApp
 import com.doomscroll.android.ui.theme.DoomscrollTheme
 
+@AndroidEntryPoint
 class BlockedAppActivity : ComponentActivity() {
+
+    @Inject lateinit var settingsRepository: SettingsRepository
+    @Inject lateinit var breakManager: MindfulBreakManager
 
     companion object {
         const val EXTRA_PACKAGE_NAME = "extra_package_name"
@@ -24,8 +31,6 @@ class BlockedAppActivity : ComponentActivity() {
         const val EXTRA_IS_SLEEP = "extra_is_sleep"
     }
 
-    private val app: DoomscrollApp
-        get() = applicationContext as DoomscrollApp
 
     // Ask once for notification permission (API 33+) so the break countdown can show; leave either way.
     private val notificationPermission =
@@ -41,7 +46,7 @@ class BlockedAppActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        app.breakManager.refreshDay()
+        breakManager.refreshDay()
 
         val targetPkg = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: "Social App"
         val reason = intent.getStringExtra(EXTRA_REASON) ?: "Daily Screen Time Limit Reached"
@@ -56,13 +61,13 @@ class BlockedAppActivity : ComponentActivity() {
 
         setContent {
             DoomscrollTheme {
-                val isStrict by app.settingsRepository.isStrictLockdownEnabled.collectAsState(initial = false)
+                val isStrict by settingsRepository.isStrictLockdownEnabled.collectAsState(initial = false)
                 // Re-read on every change to today's allowance; getBreaksRemaining also handles midnight rollover.
-                val usedMap by app.breakManager.breaksUsedToday.collectAsState()
+                val usedMap by breakManager.breaksUsedToday.collectAsState()
                 val remaining = remember(usedMap, isStrict) {
-                    app.breakManager.getBreaksRemaining(targetPkg, isStrict)
+                    breakManager.getBreaksRemaining(targetPkg, isStrict)
                 }
-                val usedToday = remember(usedMap) { app.breakManager.breaksUsedToday(targetPkg) }
+                val usedToday = remember(usedMap) { breakManager.breaksUsedToday(targetPkg) }
 
                 BlockedScreen(
                     appName = displayName,
@@ -72,7 +77,7 @@ class BlockedAppActivity : ComponentActivity() {
                     isStrictLockdown = isStrict,
                     onExitToHome = { exitToHome() },
                     onRequestBreak = { intention ->
-                        val granted = app.breakManager.requestEmergencyBreak(
+                        val granted = breakManager.requestEmergencyBreak(
                             targetPackage = targetPkg,
                             durationMinutes = 5,
                             isStrictLockdown = isStrict,

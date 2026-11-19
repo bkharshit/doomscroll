@@ -1,7 +1,8 @@
 package com.doomscroll.android.ui.limits
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.lifecycle.viewModelScope
 import com.doomscroll.android.core.model.AppLimit
 import com.doomscroll.android.core.model.DayUsageData
@@ -22,7 +23,8 @@ data class LimitsUiState(
     val isShortsBlockerEnabled: Boolean = true
 )
 
-class LimitsViewModel(
+@HiltViewModel
+class LimitsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val usageRepository: UsageRepository
 ) : ViewModel() {
@@ -93,16 +95,6 @@ class LimitsViewModel(
     fun toggleShortsBlocker(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.setShortsInterceptionEnabled(enabled)
-        }
-    }
-
-    class Factory(
-        private val settingsRepository: SettingsRepository,
-        private val usageRepository: UsageRepository
-    ) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return LimitsViewModel(settingsRepository, usageRepository) as T
         }
     }
 }

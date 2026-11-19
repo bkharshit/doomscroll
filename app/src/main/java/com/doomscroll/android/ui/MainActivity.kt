@@ -65,7 +65,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.doomscroll.android.DoomscrollApp
+import com.doomscroll.android.domain.limiter.MindfulBreakManager
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import com.doomscroll.android.ui.components.neoExtruded
 import com.doomscroll.android.ui.dashboard.DashboardIntent
 import com.doomscroll.android.ui.dashboard.DashboardScreen
@@ -85,28 +87,13 @@ sealed class Screen(val title: String, val icon: ImageVector) {
     data object Settings : Screen("Settings", Icons.Default.Settings)
 }
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    private val app: DoomscrollApp
-        get() = applicationContext as DoomscrollApp
+    @Inject lateinit var breakManager: MindfulBreakManager
 
-    private val dashboardViewModel: DashboardViewModel by viewModels {
-        DashboardViewModel.Factory(
-            context = applicationContext,
-            settingsRepository = app.settingsRepository,
-            usageRepository = app.usageRepository,
-            metricsRepository = app.metricsRepository,
-            breakManager = app.breakManager,
-            rulePackages = app.interceptionEngine.rulePackages
-        )
-    }
-
-    private val limitsViewModel: LimitsViewModel by viewModels {
-        LimitsViewModel.Factory(
-            settingsRepository = app.settingsRepository,
-            usageRepository = app.usageRepository
-        )
-    }
+    private val dashboardViewModel: DashboardViewModel by viewModels()
+    private val limitsViewModel: LimitsViewModel by viewModels()
 
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -118,7 +105,7 @@ class MainActivity : ComponentActivity() {
         // When a pause starts from the dashboard, ask (once per launch) to show its countdown notification.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                app.breakManager.breakSession.collect { session ->
+                breakManager.breakSession.collect { session ->
                     if (session.isActive && !askedForNotifications &&
                         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !BreakNotifier.hasPermission(this@MainActivity)
                     ) {

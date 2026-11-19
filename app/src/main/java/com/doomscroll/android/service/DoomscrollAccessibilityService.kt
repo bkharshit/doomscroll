@@ -16,7 +16,14 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.Toast
-import com.doomscroll.android.DoomscrollApp
+import com.doomscroll.android.data.repository.MetricsRepository
+import com.doomscroll.android.data.repository.SettingsRepository
+import com.doomscroll.android.data.repository.UsageRepository
+import com.doomscroll.android.domain.interceptor.InterceptionEngine
+import com.doomscroll.android.domain.limiter.Enforcer
+import com.doomscroll.android.domain.limiter.MindfulBreakManager
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import com.doomscroll.android.R
 import com.doomscroll.android.domain.interceptor.Decision
 import com.doomscroll.android.domain.interceptor.EvalThrottle
@@ -31,13 +38,18 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
+@AndroidEntryPoint
 class DoomscrollAccessibilityService : AccessibilityService() {
+
+    @Inject lateinit var settingsRepository: SettingsRepository
+    @Inject lateinit var usageRepository: UsageRepository
+    @Inject lateinit var metricsRepository: MetricsRepository
+    @Inject lateinit var interceptionEngine: InterceptionEngine
+    @Inject lateinit var breakManager: MindfulBreakManager
+    @Inject lateinit var enforcer: Enforcer
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mainHandler = Handler(Looper.getMainLooper())
-
-    private val app: DoomscrollApp
-        get() = applicationContext as DoomscrollApp
 
     private val powerManager by lazy {
         getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -91,16 +103,16 @@ class DoomscrollAccessibilityService : AccessibilityService() {
         actionExecutor = ActionExecutor(this)
 
         sessionTracker = ForegroundSessionTracker(
-            usageRepository = app.usageRepository,
-            settingsRepository = app.settingsRepository,
-            breakManager = app.breakManager,
-            enforcer = app.usageLimitEnforcer,
+            usageRepository = usageRepository,
+            settingsRepository = settingsRepository,
+            breakManager = breakManager,
+            enforcer = enforcer,
             scope = serviceScope,
             log = { Log.d("ForegroundTracker", it) }
         )
 
         // A paused shield always comes back on by itself.
-        ShieldAutoResume(app.settingsRepository, serviceScope).start()
+        ShieldAutoResume(settingsRepository, serviceScope).start()
 
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -110,27 +122,27 @@ class DoomscrollAccessibilityService : AccessibilityService() {
         registerReceiver(screenStateReceiver, filter)
 
         serviceScope.launch {
-            app.settingsRepository.isMasterShieldEnabled.collect {
+            settingsRepository.isMasterShieldEnabled.collect {
                 isMasterShieldActive = it
                 sessionTracker.resyncCurrentSession()
             }
         }
         serviceScope.launch {
-            app.settingsRepository.isReelsInterceptionEnabled.collect { isReelsInterceptionActive = it }
+            settingsRepository.isReelsInterceptionEnabled.collect { isReelsInterceptionActive = it }
         }
         serviceScope.launch {
-            app.settingsRepository.isShortsInterceptionEnabled.collect { isShortsInterceptionActive = it }
+            settingsRepository.isShortsInterceptionEnabled.collect { isShortsInterceptionActive = it }
         }
         // Limit or per-app block toggle changed: re-plan the current session.
         serviceScope.launch {
-            app.settingsRepository.getAppLimits()
+            settingsRepository.getAppLimits()
                 .map { limits -> limits.map { Triple(it.monitoredApp.packageName, it.dailyLimitMinutes, it.isAppBlockingEnabled) } }
                 .distinctUntilChanged()
                 .collect { sessionTracker.resyncCurrentSession() }
         }
         // A break starting or ending: when it ends, the block must come back even if the user never leaves the app.
         serviceScope.launch {
-            app.breakManager.breakSession
+            breakManager.breakSession
                 .map { it.isActive to it.allowedPackage }
                 .distinctUntilChanged()
                 .collect { sessionTracker.resyncCurrentSession() }
@@ -152,7 +164,7 @@ class DoomscrollAccessibilityService : AccessibilityService() {
                             val msg = if (isMasterShieldActive) {
                                 getString(R.string.toast_shield_pause_in_app)
                             } else {
-                                serviceScope.launch { app.settingsRepository.setMasterShieldEnabled(true) }
+                                serviceScope.launch { settingsRepository.setMasterShieldEnabled(true) }
                                 getString(R.string.toast_shield_active)
                             }
                             Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
@@ -209,10 +221,10 @@ class DoomscrollAccessibilityService : AccessibilityService() {
         // Cheap gate on the main thread: only volatile reads, no IPC.
         if (packageName == applicationContext.packageName) return
         if (!isMasterShieldActive) return
-        val rule = app.interceptionEngine.ruleFor(packageName) ?: return
+        val rule = interceptionEngine.ruleFor(packageName) ?: return
         if (!isRuleEnabled(rule.id)) return
         if (powerManager?.isInteractive == false || keyguardManager?.isKeyguardLocked == true) return
-        if (app.breakManager.isBreakActiveForPackage(packageName)) return
+        if (breakManager.isBreakActiveForPackage(packageName)) return
 
         // Coalesce: one evaluation per window, on the eval thread. Window changes (tab switches,
         // a player opening) are evaluated straight away.
@@ -241,7 +253,7 @@ class DoomscrollAccessibilityService : AccessibilityService() {
         val started = SystemClock.elapsedRealtime()
         try {
             if (root.packageName?.toString() != pkg) return
-            val decision = app.interceptionEngine.evaluate(Screen(pkg, A11yUiNode(root, pool)))
+            val decision = interceptionEngine.evaluate(Screen(pkg, A11yUiNode(root, pool)))
             if (decision is Decision.Act) mainHandler.post { executeOnMain(pkg, decision) }
         } catch (e: Exception) {
             Log.e(TAG, "Error evaluating $pkg", e)
@@ -261,8 +273,8 @@ class DoomscrollAccessibilityService : AccessibilityService() {
             if (root.packageName?.toString() != pkg) return
             if (actionExecutor.execute(decision.action, root)) {
                 Log.w(TAG, "INTERCEPTED: [$pkg] ${decision.reason} -> ${decision.action}")
-                app.interceptionEngine.ruleFor(pkg)?.let { rule ->
-                    serviceScope.launch { app.metricsRepository.recordReelBlocked(rule.id) }
+                interceptionEngine.ruleFor(pkg)?.let { rule ->
+                    serviceScope.launch { metricsRepository.recordReelBlocked(rule.id) }
                 }
             }
         } finally {
