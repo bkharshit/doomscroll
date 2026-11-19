@@ -8,6 +8,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
+import android.os.SystemClock
 import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
@@ -17,7 +19,9 @@ import android.widget.Toast
 import com.doomscroll.android.DoomscrollApp
 import com.doomscroll.android.R
 import com.doomscroll.android.domain.interceptor.Decision
+import com.doomscroll.android.domain.interceptor.EvalThrottle
 import com.doomscroll.android.domain.interceptor.Screen
+import java.util.concurrent.atomic.AtomicBoolean
 import com.doomscroll.android.domain.limiter.ShieldAutoResume
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +56,14 @@ class DoomscrollAccessibilityService : AccessibilityService() {
     @Volatile private var isShortsInterceptionActive: Boolean = true
 
     private val resolveForegroundRunnable = Runnable { resolveAndUpdateForeground() }
+
+    // Interception runs off the main thread (D5): events are coalesced per window into one evaluation.
+    private val evalThread = HandlerThread("a11y-eval").apply { start() }
+    private val evalHandler = Handler(evalThread.looper)
+    private val evalRunnable = Runnable { evaluateDirtyPackage() }
+    private val evalScheduled = AtomicBoolean(false)
+    private val evalThrottle = EvalThrottle()
+    @Volatile private var dirtyPackage: String? = null
 
     private val screenStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -188,60 +200,75 @@ class DoomscrollAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         val packageName = event.packageName?.toString() ?: return
+        val isWindowChange = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
 
         // Foreground tracking: any window change (including our own block screen) may mean a new app.
         // Resolve from the active window instead of trusting the event's package.
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            requestForegroundResolve(FOREGROUND_RESOLVE_DELAY_MS)
-        }
+        if (isWindowChange) requestForegroundResolve(FOREGROUND_RESOLVE_DELAY_MS)
 
-        // 1. Never intercept self
+        // Cheap gate on the main thread: only volatile reads, no IPC.
         if (packageName == applicationContext.packageName) return
+        if (!isMasterShieldActive) return
+        val rule = app.interceptionEngine.ruleFor(packageName) ?: return
+        if (!isRuleEnabled(rule.id)) return
+        if (powerManager?.isInteractive == false || keyguardManager?.isKeyguardLocked == true) return
+        if (app.breakManager.isBreakActiveForPackage(packageName)) return
 
-        // 2. Screen state check: Skip if screen is off or keyguard is locked
-        if (powerManager?.isInteractive == false || keyguardManager?.isKeyguardLocked == true) {
-            return
+        // Coalesce: one evaluation per window, on the eval thread. Window changes (tab switches,
+        // a player opening) are evaluated straight away.
+        dirtyPackage = packageName
+        if (isWindowChange) {
+            evalHandler.removeCallbacks(evalRunnable)
+            evalScheduled.set(true)
+            evalHandler.post(evalRunnable)
+        } else if (evalScheduled.compareAndSet(false, true)) {
+            evalHandler.postDelayed(evalRunnable, evalThrottle.windowMillis)
         }
+    }
 
-        // 3. Temporary Mindful Break check ("Post Mode")
-        if (app.breakManager.isBreakActiveForPackage(packageName)) {
-            return
-        }
+    private fun isRuleEnabled(ruleId: String): Boolean = when (ruleId) {
+        "instagram.reels" -> isReelsInterceptionActive
+        "youtube.shorts" -> isShortsInterceptionActive
+        else -> true
+    }
 
-        // 4. Surgical Short-Form Video Interception (synchronous, sub-50ms)
-        if (isMasterShieldActive && app.interceptionEngine.shouldProcessPackage(packageName)) {
-            val isEnabledForApp = when (packageName) {
-                "com.instagram.android" -> isReelsInterceptionActive
-                "com.google.android.youtube" -> isShortsInterceptionActive
-                else -> true
+    /** Runs on the "a11y-eval" thread: snapshot once, evaluate, hand any action to the main thread. */
+    private fun evaluateDirtyPackage() {
+        evalScheduled.set(false)
+        val pkg = dirtyPackage ?: return
+        val root = rootInActiveWindow ?: return
+        val pool = NodePool().apply { track(root) }
+        val started = SystemClock.elapsedRealtime()
+        try {
+            if (root.packageName?.toString() != pkg) return
+            val decision = app.interceptionEngine.evaluate(Screen(pkg, A11yUiNode(root, pool)))
+            if (decision is Decision.Act) mainHandler.post { executeOnMain(pkg, decision) }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error evaluating $pkg", e)
+        } finally {
+            pool.recycleAll()
+            val took = SystemClock.elapsedRealtime() - started
+            if (evalThrottle.record(took)) {
+                Log.w(TAG, "SlowTree: evaluation took ${took}ms, coalescing window now ${evalThrottle.windowMillis}ms")
             }
+        }
+    }
 
-            if (isEnabledForApp) {
-                val root = rootInActiveWindow
-                if (root != null) {
-                    try {
-                        val uiNode = A11yUiNode(root)
-                        val screen = Screen(packageName, uiNode)
-                        val decision = app.interceptionEngine.evaluate(screen)
-
-                        if (decision is Decision.Act) {
-                            val executed = actionExecutor.execute(decision.action, root)
-                            if (executed) {
-                                Log.w(TAG, "🚨 INTERCEPTED: [$packageName] Reason: ${decision.reason} -> Action: ${decision.action}")
-                                app.interceptionEngine.ruleFor(packageName)?.let { rule ->
-                                    serviceScope.launch { app.metricsRepository.recordReelBlocked(rule.id) }
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error evaluating accessibility event for $packageName", e)
-                    } finally {
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                            @Suppress("DEPRECATION")
-                            root.recycle()
-                        }
-                    }
+    /** Actions need the live tree (it may have changed since the snapshot), so re-fetch it here. */
+    private fun executeOnMain(pkg: String, decision: Decision.Act) {
+        val root = rootInActiveWindow ?: return
+        try {
+            if (root.packageName?.toString() != pkg) return
+            if (actionExecutor.execute(decision.action, root)) {
+                Log.w(TAG, "INTERCEPTED: [$pkg] ${decision.reason} -> ${decision.action}")
+                app.interceptionEngine.ruleFor(pkg)?.let { rule ->
+                    serviceScope.launch { app.metricsRepository.recordReelBlocked(rule.id) }
                 }
+            }
+        } finally {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                @Suppress("DEPRECATION")
+                root.recycle()
             }
         }
     }
@@ -253,6 +280,8 @@ class DoomscrollAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         mainHandler.removeCallbacks(resolveForegroundRunnable)
+        evalHandler.removeCallbacksAndMessages(null)
+        evalThread.quitSafely()
         try {
             unregisterReceiver(screenStateReceiver)
         } catch (e: Exception) {

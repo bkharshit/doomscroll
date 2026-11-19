@@ -13,16 +13,23 @@ interface UiNode {
 
 data class Screen(
     val packageName: String,
-    val root: UiNode
+    val root: UiNode,
+    /** Traversal caps so a pathological tree can't stall the evaluation thread. */
+    val maxDepth: Int = 40,
+    val maxNodes: Int = 2500
 ) {
+    /** Built by one traversal; every rule check reads this map instead of querying the tree again. */
     val byId: Map<String, List<UiNode>> by lazy {
         val map = mutableMapOf<String, MutableList<UiNode>>()
+        var visited = 0
         fun traverse(node: UiNode, depth: Int) {
-            if (depth > 40) return
+            if (depth > maxDepth || visited >= maxNodes) return
+            visited++
             node.viewId?.let { id ->
                 map.getOrPut(id) { mutableListOf() }.add(node)
             }
             for (child in node.children) {
+                if (visited >= maxNodes) return
                 traverse(child, depth + 1)
             }
         }
