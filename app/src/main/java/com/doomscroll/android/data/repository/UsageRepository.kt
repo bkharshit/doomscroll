@@ -8,6 +8,8 @@ import com.doomscroll.android.core.model.DayUsageData
 import com.doomscroll.android.core.model.MonitoredApp
 import com.doomscroll.android.core.model.UsageStat
 import com.doomscroll.android.core.util.ForegroundCalculator
+import com.doomscroll.android.data.db.DailyUsage
+import com.doomscroll.android.data.db.MetricsDao
 import com.doomscroll.android.core.util.TimeUtils
 import com.doomscroll.android.core.util.UsageEvt
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +26,8 @@ interface UsageRepository {
 }
 
 class UsageRepositoryImpl(
-    private val context: Context
+    private val context: Context,
+    private val metricsDao: MetricsDao
 ) : UsageRepository {
 
     private val usageStatsManager: UsageStatsManager? by lazy {
@@ -65,6 +68,20 @@ class UsageRepositoryImpl(
         val usm = usageStatsManager ?: return emptyMap()
         val startTime = TimeUtils.getStartOfTodayMillis()
         val endTime = System.currentTimeMillis()
+        return foregroundSecondsFromEvents(usm, startTime, endTime, targetPackages)
+            ?: fallbackQueryUsageStats(usm, startTime, endTime, targetPackages)
+    }
+
+    /**
+     * Foreground seconds per package in [startTime, endTime) from raw UsageEvents, or null when the
+     * system returned no events for the range (e.g. older than its event retention) or failed.
+     */
+    private fun foregroundSecondsFromEvents(
+        usm: UsageStatsManager,
+        startTime: Long,
+        endTime: Long,
+        targetPackages: Set<String>
+    ): Map<String, Long>? {
         val lookbackMillis = 3 * 3600 * 1000L // 3 hours lookback to catch sessions open at midnight
 
         return try {
@@ -92,13 +109,37 @@ class UsageRepositoryImpl(
                     packages = targetPackages
                 )
             } else {
-                // Fallback to queryUsageStats if no events returned
-                fallbackQueryUsageStats(usm, startTime, endTime, targetPackages)
+                null
             }
         } catch (e: Exception) {
-            Log.e("UsageRepository", "Failed to query usage events, falling back", e)
-            fallbackQueryUsageStats(usm, startTime, endTime, targetPackages)
+            Log.e("UsageRepository", "Failed to query usage events", e)
+            null
         }
+    }
+
+    /**
+     * A finished day's totals: from Room if already recorded; otherwise computed from UsageEvents and
+     * saved, so history outlives the system's event retention; otherwise (too old for events and never
+     * recorded) an approximate figure from daily buckets, not saved.
+     */
+    private suspend fun finishedDaySeconds(
+        usm: UsageStatsManager,
+        day: LocalDate,
+        zone: ZoneId,
+        packages: Set<String>
+    ): Long {
+        val epochDay = day.toEpochDay()
+        val stored = metricsDao.usageForDay(epochDay)
+        if (stored.isNotEmpty()) return stored.sumOf { it.seconds }
+
+        val dayStart = day.atStartOfDay(zone).toInstant().toEpochMilli()
+        val dayEnd = day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val fromEvents = foregroundSecondsFromEvents(usm, dayStart, dayEnd, packages)
+        if (fromEvents != null) {
+            metricsDao.saveUsage(fromEvents.map { (pkg, secs) -> DailyUsage(epochDay, pkg, secs) })
+            return fromEvents.values.sum()
+        }
+        return fallbackQueryUsageStats(usm, dayStart, dayEnd - 1, packages).values.sum()
     }
 
     private fun fallbackQueryUsageStats(
@@ -158,24 +199,7 @@ class UsageRepositoryImpl(
             val daySeconds = if (daysAgo == 0) {
                 todayTotalSeconds
             } else {
-                val dayStart = date.atStartOfDay(zone).toInstant().toEpochMilli()
-                val dayEnd = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
-                var pastSeconds = 0L
-                try {
-                    val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, dayStart, dayEnd)
-                    if (!stats.isNullOrEmpty()) {
-                        for (pkg in allMonitoredPackages) {
-                            val matching = stats.filter { it.packageName == pkg }
-                            val best = matching.filter { it.lastTimeUsed in dayStart..dayEnd }.maxByOrNull { it.lastTimeStamp }
-                                ?: matching.filter { it.lastTimeUsed >= dayStart }.maxByOrNull { it.lastTimeStamp }
-                                ?: matching.maxByOrNull { it.lastTimeStamp }
-                            pastSeconds += (best?.totalTimeInForeground ?: 0L) / 1000L
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("UsageRepository", "Error querying stats for day -$daysAgo", e)
-                }
-                pastSeconds
+                finishedDaySeconds(usm, date, zone, allMonitoredPackages)
             }
 
             rawDays.add(RawDay(short, full, daySeconds, daysAgo == 0))

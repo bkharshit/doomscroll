@@ -59,7 +59,15 @@ object MoveBreakStateOutMigration : DataMigration<Preferences> {
     override suspend fun cleanUp() = Unit
 }
 
-class PreferencesDataStore(private val context: Context) {
+/** Block counts recorded in DataStore before metrics moved to Room. */
+interface LegacyStatsSource {
+    val legacyAllTimeOffset: Flow<Int>
+    suspend fun takeLegacyStatsForImport(): LegacyStats?
+}
+
+data class LegacyStats(val epochDay: Int, val todayByRule: Map<String, Int>)
+
+class PreferencesDataStore(private val context: Context) : LegacyStatsSource {
 
     companion object {
         val KEY_SCHEMA_VERSION = intPreferencesKey("schema_version")
@@ -78,11 +86,11 @@ class PreferencesDataStore(private val context: Context) {
         val KEY_DOWNTIME_END_MIN = intPreferencesKey("downtime_end_min")
 
         // Stats & Rollover
-        val KEY_REELS_BLOCKED_TODAY = intPreferencesKey("reels_blocked_today")
         val KEY_STATS_EPOCH_DAY = intPreferencesKey("stats_epoch_day")
         val KEY_ALL_TIME_BLOCKED = intPreferencesKey("all_time_blocked")
+        val KEY_STATS_IMPORTED = booleanPreferencesKey("stats_imported_to_room")
+        val KEY_LEGACY_ALL_TIME_OFFSET = intPreferencesKey("legacy_all_time_offset")
         private const val BLOCKED_TODAY_PREFIX = "blocked_today_"
-        fun blockedTodayKey(ruleId: String) = intPreferencesKey(BLOCKED_TODAY_PREFIX + ruleId)
 
         private fun todayEpoch(): Int = java.time.LocalDate.now().toEpochDay().toInt()
 
@@ -114,24 +122,12 @@ class PreferencesDataStore(private val context: Context) {
         it[KEY_BREAK_DURATION_MINUTES] ?: 5
     }
 
-    /** Today's total. Reads as 0 once the stored day is stale, even before anything writes. */
-    val reelsBlockedToday: Flow<Int> = context.dataStore.data.map {
-        if (it[KEY_STATS_EPOCH_DAY] == todayEpoch()) it[KEY_REELS_BLOCKED_TODAY] ?: 0 else 0
-    }
-
-    /** Today's blocks per interception rule id (e.g. "instagram.reels"). */
-    val blockedTodayByRule: Flow<Map<String, Int>> = context.dataStore.data.map { prefs ->
-        if (prefs[KEY_STATS_EPOCH_DAY] != todayEpoch()) {
-            emptyMap()
-        } else {
-            prefs.asMap().entries
-                .filter { it.key.name.startsWith(BLOCKED_TODAY_PREFIX) }
-                .associate { it.key.name.removePrefix(BLOCKED_TODAY_PREFIX) to (it.value as? Int ?: 0) }
-        }
-    }
-
-    val allTimeBlocked: Flow<Int> = context.dataStore.data.map {
-        it[KEY_ALL_TIME_BLOCKED] ?: 0
+    /**
+     * Blocks counted before metrics moved to Room, minus today's (which are imported into Room).
+     * Zero until [takeLegacyStatsForImport] has run.
+     */
+    override val legacyAllTimeOffset: Flow<Int> = context.dataStore.data.map {
+        if (it[KEY_STATS_IMPORTED] == true) it[KEY_LEGACY_ALL_TIME_OFFSET] ?: 0 else 0
     }
 
     fun getAppDailyLimitMinutes(packageName: String, defaultMinutes: Int): Flow<Int> {
@@ -173,27 +169,25 @@ class PreferencesDataStore(private val context: Context) {
         context.dataStore.edit { it[appBlockEnabledKey(packageName)] = enabled }
     }
 
-    /** Rolls the day over and increments today's totals in one transaction, so a count never lands on the wrong day. */
-    suspend fun incrementBlockedCount(ruleId: String) {
+    /**
+     * Returns the pre-Room block counts once (null on later calls) and freezes the all-time offset,
+     * excluding today's counts because the caller imports those into Room. Atomic with the flag.
+     */
+    override suspend fun takeLegacyStatsForImport(): LegacyStats? {
+        var result: LegacyStats? = null
         context.dataStore.edit { prefs ->
-            rollOverIfNewDay(prefs, todayEpoch())
-            val ruleKey = blockedTodayKey(ruleId)
-            prefs[ruleKey] = (prefs[ruleKey] ?: 0) + 1
-            prefs[KEY_REELS_BLOCKED_TODAY] = (prefs[KEY_REELS_BLOCKED_TODAY] ?: 0) + 1
-            prefs[KEY_ALL_TIME_BLOCKED] = (prefs[KEY_ALL_TIME_BLOCKED] ?: 0) + 1
+            if (prefs[KEY_STATS_IMPORTED] == true) return@edit
+            val epoch = prefs[KEY_STATS_EPOCH_DAY] ?: -1
+            val todayByRule = if (epoch == todayEpoch()) {
+                prefs.asMap().entries
+                    .filter { it.key.name.startsWith(BLOCKED_TODAY_PREFIX) }
+                    .associate { it.key.name.removePrefix(BLOCKED_TODAY_PREFIX) to (it.value as? Int ?: 0) }
+            } else emptyMap()
+            val allTime = prefs[KEY_ALL_TIME_BLOCKED] ?: 0
+            prefs[KEY_LEGACY_ALL_TIME_OFFSET] = (allTime - todayByRule.values.sum()).coerceAtLeast(0)
+            prefs[KEY_STATS_IMPORTED] = true
+            result = LegacyStats(epoch, todayByRule)
         }
-    }
-
-    suspend fun resetDailyStatsIfNewDay(currentEpochDay: Int = todayEpoch()) {
-        context.dataStore.edit { prefs -> rollOverIfNewDay(prefs, currentEpochDay) }
-    }
-
-    private fun rollOverIfNewDay(prefs: androidx.datastore.preferences.core.MutablePreferences, today: Int) {
-        if (prefs[KEY_STATS_EPOCH_DAY] == today) return
-        prefs[KEY_REELS_BLOCKED_TODAY] = 0
-        prefs.asMap().keys
-            .filter { it.name.startsWith(BLOCKED_TODAY_PREFIX) }
-            .forEach { prefs.remove(it) }
-        prefs[KEY_STATS_EPOCH_DAY] = today
+        return result
     }
 }

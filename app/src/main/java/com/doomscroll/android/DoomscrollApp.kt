@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import com.doomscroll.android.data.db.DoomscrollDatabase
 import com.doomscroll.android.data.local.BreakDataStore
 import com.doomscroll.android.notification.BreakNotifier
 import kotlinx.coroutines.CoroutineScope
@@ -52,8 +53,9 @@ class DoomscrollApp : Application() {
 
         preferencesDataStore = PreferencesDataStore(this)
         settingsRepository = SettingsRepositoryImpl(preferencesDataStore)
-        usageRepository = UsageRepositoryImpl(this)
-        metricsRepository = MetricsRepositoryImpl(preferencesDataStore)
+        val database = DoomscrollDatabase.create(this)
+        usageRepository = UsageRepositoryImpl(this, database.metricsDao())
+        metricsRepository = MetricsRepositoryImpl(database.metricsDao(), preferencesDataStore)
         interceptionEngine = InterceptionEngine()
         usageLimitEnforcer = UsageLimitEnforcer(this)
         breakManager = MindfulBreakManager(store = BreakDataStore(this))
