@@ -1,6 +1,10 @@
 package com.doomscroll.android.ui.blockscreen
 
+import android.Manifest
 import android.content.Intent
+import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
+import com.doomscroll.android.notification.BreakNotifier
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -22,6 +26,18 @@ class BlockedAppActivity : ComponentActivity() {
 
     private val app: DoomscrollApp
         get() = applicationContext as DoomscrollApp
+
+    // Ask once for notification permission (API 33+) so the break countdown can show; leave either way.
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { finish() }
+
+    private fun finishAfterBreakStarted() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !BreakNotifier.hasPermission(this)) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            finish()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,7 +79,7 @@ class BlockedAppActivity : ComponentActivity() {
                             intention = intention
                         )
                         if (granted) {
-                            finish()
+                            finishAfterBreakStarted()
                         }
                     }
                 )

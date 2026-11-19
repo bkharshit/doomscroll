@@ -42,6 +42,11 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Doomscroll.Blocked" />
 
+        <!-- Ends a running break from its notification -->
+        <receiver
+            android:name=".notification.EndBreakReceiver"
+            android:exported="false" />
+
         <!-- Surgical & Usage Accessibility Service -->
         <service
             android:name=".service.DoomscrollAccessibilityService"

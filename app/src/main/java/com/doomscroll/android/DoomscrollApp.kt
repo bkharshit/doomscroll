@@ -5,6 +5,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import com.doomscroll.android.data.local.BreakDataStore
+import com.doomscroll.android.notification.BreakNotifier
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import com.doomscroll.android.data.local.PreferencesDataStore
 import com.doomscroll.android.data.repository.MetricsRepository
 import com.doomscroll.android.data.repository.MetricsRepositoryImpl
@@ -39,6 +43,9 @@ class DoomscrollApp : Application() {
     lateinit var breakManager: MindfulBreakManager
         private set
 
+    /** Process-wide scope for app-level observers (lives as long as the process). */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -52,6 +59,7 @@ class DoomscrollApp : Application() {
         breakManager = MindfulBreakManager(store = BreakDataStore(this))
 
         createNotificationChannels()
+        BreakNotifier(this, breakManager).start(appScope)
     }
 
     private fun createNotificationChannels() {

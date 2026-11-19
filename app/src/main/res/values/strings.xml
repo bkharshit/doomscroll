@@ -7,7 +7,7 @@
     <string name="break_notification_channel_name">Mindful Breaks</string>
     <string name="break_notification_channel_desc">Active break notifications and countdown timer</string>
     <string name="break_active_title">Mindful Break Active</string>
-    <string name="break_active_content">%1$d minutes remaining. Use social media intentionally.</string>
+    <string name="break_active_content">Break for %1$s ends at %2$s. Tap to end it now.</string>
     <string name="toast_shield_active">Doomscroll: protection on (Reels &amp; Shorts blocked)</string>
     <string name="toast_shield_pause_in_app">Doomscroll: open the app to pause protection</string>
 </resources>

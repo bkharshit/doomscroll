@@ -1,5 +1,14 @@
 package com.doomscroll.android.ui
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.doomscroll.android.notification.BreakNotifier
+import kotlinx.coroutines.launch
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -99,8 +108,26 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private var askedForNotifications = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // When a pause starts from the dashboard, ask (once per launch) to show its countdown notification.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                app.breakManager.breakSession.collect { session ->
+                    if (session.isActive && !askedForNotifications &&
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !BreakNotifier.hasPermission(this@MainActivity)
+                    ) {
+                        askedForNotifications = true
+                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+            }
+        }
 
         setContent {
             DoomscrollTheme {
