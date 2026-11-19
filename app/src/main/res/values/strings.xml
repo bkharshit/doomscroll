@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Doomscroll</string>
+    <string name="accessibility_service_label">Doomscroll Interceptor &amp; Guard</string>
+    <string name="accessibility_service_description">Protects your attention by detecting and redirecting away from compulsive short-form video feeds (such as Instagram Reels, YouTube Shorts, and TikTok) and enforcing daily time limits.</string>
+    
+    <!-- Notifications & Break -->
+    <string name="break_notification_channel_name">Mindful Breaks</string>
+    <string name="break_notification_channel_desc">Active break notifications and countdown timer</string>
+    <string name="break_active_title">Mindful Break Active</string>
+    <string name="break_active_content">%1$d minutes remaining. Use social media intentionally.</string>
+</resources>
