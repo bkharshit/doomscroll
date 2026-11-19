@@ -35,6 +35,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.doomscroll.android.domain.limiter.BreakPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,11 +76,26 @@ fun BlockedScreen(
     appName: String,
     reason: String,
     breaksRemaining: Int = 2,
+    breaksUsedToday: Int = 0,
     isStrictLockdown: Boolean = false,
     onExitToHome: () -> Unit,
-    onRequestBreak: () -> Unit,
+    onRequestBreak: (intention: String?) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showBreakDialog by remember { mutableStateOf(false) }
+    if (showBreakDialog) {
+        EmergencyBreakDialog(
+            appName = appName,
+            waitSeconds = BreakPolicy.waitSecondsFor(breaksUsedToday),
+            requireIntention = BreakPolicy.requiresIntention(breaksUsedToday),
+            onConfirm = { intention ->
+                showBreakDialog = false
+                onRequestBreak(intention)
+            },
+            onDismiss = { showBreakDialog = false }
+        )
+    }
+
     // Gentle breathing pulse animation for the mindful aura
     val infiniteTransition = rememberInfiniteTransition(label = "gentle_breath")
     val breathScale by infiniteTransition.animateFloat(
@@ -453,7 +472,7 @@ fun BlockedScreen(
                     .fillMaxWidth()
                     .height(50.dp)
                     .neoExtruded(cornerRadius = 18.dp, elevation = if (canBreak) 3.dp else 1.dp)
-                    .clickable(enabled = canBreak) { onRequestBreak() },
+                    .clickable(enabled = canBreak) { showBreakDialog = true },
                 contentAlignment = Alignment.Center
             ) {
                 Row(

@@ -46,18 +46,21 @@ class BlockedAppActivity : ComponentActivity() {
                 val remaining = remember(usedMap, isStrict) {
                     app.breakManager.getBreaksRemaining(targetPkg, isStrict)
                 }
+                val usedToday = remember(usedMap) { app.breakManager.breaksUsedToday(targetPkg) }
 
                 BlockedScreen(
                     appName = displayName,
                     reason = reason,
                     breaksRemaining = remaining,
+                    breaksUsedToday = usedToday,
                     isStrictLockdown = isStrict,
                     onExitToHome = { exitToHome() },
-                    onRequestBreak = {
+                    onRequestBreak = { intention ->
                         val granted = app.breakManager.requestEmergencyBreak(
                             targetPackage = targetPkg,
                             durationMinutes = 5,
-                            isStrictLockdown = isStrict
+                            isStrictLockdown = isStrict,
+                            intention = intention
                         )
                         if (granted) {
                             finish()

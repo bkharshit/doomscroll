@@ -1,5 +1,6 @@
 package com.doomscroll.android
 
+import com.doomscroll.android.domain.limiter.BreakPolicy
 import com.doomscroll.android.domain.limiter.BreakSnapshot
 import com.doomscroll.android.domain.limiter.BreakStateCodec
 import com.doomscroll.android.domain.limiter.MindfulBreakManager
@@ -27,7 +28,7 @@ class BreakPolicyTest {
         val m = MindfulBreakManager(store = null, scope = backgroundScope, clock = clock)
         assertTrue(m.requestEmergencyBreak(ig))
         m.cancelBreak()
-        assertTrue(m.requestEmergencyBreak(ig))
+        assertTrue(m.requestEmergencyBreak(ig, intention = "check event"))
         m.cancelBreak()
         assertEquals(0, m.getBreaksRemaining(ig))
 
@@ -43,7 +44,7 @@ class BreakPolicyTest {
         val m = MindfulBreakManager(store = store, scope = backgroundScope, clock = clock)
         runCurrent()
         m.requestEmergencyBreak(ig); m.cancelBreak()
-        m.requestEmergencyBreak(ig); m.cancelBreak()
+        m.requestEmergencyBreak(ig, intention = "x"); m.cancelBreak()
         runCurrent()
 
         clock.advanceHours(1) // past midnight
@@ -89,6 +90,15 @@ class BreakPolicyTest {
         assertFalse("one per day", m.requestGlobalPause(5, "Again"))
         // Emergency allowance is separate from the global pause.
         assertEquals(2, m.getBreaksRemaining(ig))
+    }
+
+    @Test
+    fun emergencyBreakFriction_growsWithEachBreak() {
+        assertEquals(10, BreakPolicy.waitSecondsFor(0))
+        assertEquals(30, BreakPolicy.waitSecondsFor(1))
+        assertEquals(50, BreakPolicy.waitSecondsFor(2))
+        assertFalse(BreakPolicy.requiresIntention(0))
+        assertTrue(BreakPolicy.requiresIntention(1))
     }
 
     @Test

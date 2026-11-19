@@ -22,6 +22,18 @@ import java.time.LocalDate
  * - Strict Lockdown allows neither.
  * - Allowances reset at local midnight, including while the process stays alive.
  */
+/** Friction that grows with each emergency break taken the same day. */
+object BreakPolicy {
+    private const val FIRST_WAIT_SECONDS = 10
+    private const val EXTRA_WAIT_PER_BREAK_SECONDS = 20
+
+    /** Wait before the next break can start, given how many were already taken today. */
+    fun waitSecondsFor(usedToday: Int): Int = FIRST_WAIT_SECONDS + EXTRA_WAIT_PER_BREAK_SECONDS * usedToday.coerceAtLeast(0)
+
+    /** A typed intention is required from the second break of the day. */
+    fun requiresIntention(usedToday: Int): Boolean = usedToday >= 1
+}
+
 class MindfulBreakManager(
     private val store: BreakStateStore? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
@@ -94,12 +106,26 @@ class MindfulBreakManager(
         return (MAX_GLOBAL_PAUSES_PER_DAY - used).coerceAtLeast(0)
     }
 
+    /** Emergency breaks used today for [packageName]. */
+    fun breaksUsedToday(packageName: String): Int {
+        refreshDay()
+        return _breaksUsedToday.value[packageName] ?: 0
+    }
+
+    /**
+     * Spends one emergency break. From the second break of the day an [intention] is required
+     * ([BreakPolicy.requiresIntention]); the wait before asking is enforced by the UI.
+     */
     fun requestEmergencyBreak(
         targetPackage: String,
         durationMinutes: Int = 5,
-        isStrictLockdown: Boolean = false
-    ): Boolean = spend(targetPackage, DEFAULT_MAX_BREAKS_PER_APP, isStrictLockdown) {
-        startBreak(durationMinutes, targetPackage, "Emergency Mindful Break")
+        isStrictLockdown: Boolean = false,
+        intention: String? = null
+    ): Boolean {
+        if (BreakPolicy.requiresIntention(breaksUsedToday(targetPackage)) && intention.isNullOrBlank()) return false
+        return spend(targetPackage, DEFAULT_MAX_BREAKS_PER_APP, isStrictLockdown) {
+            startBreak(durationMinutes, targetPackage, intention?.trim()?.ifEmpty { null } ?: "Emergency Mindful Break")
+        }
     }
 
     fun requestGlobalPause(

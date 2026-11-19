@@ -29,13 +29,15 @@ class MindfulBreakManagerTest {
         assertEquals(1, manager.getBreaksRemaining(pkg))
 
         // Take second break
-        val break2 = manager.requestEmergencyBreak(pkg, durationMinutes = 5)
+        // Second break of the day needs a typed intention
+        assertFalse(manager.requestEmergencyBreak(pkg, durationMinutes = 5))
+        val break2 = manager.requestEmergencyBreak(pkg, durationMinutes = 5, intention = "Reply to a DM")
         assertTrue(break2)
         assertEquals(0, manager.getBreaksRemaining(pkg))
         assertFalse(manager.canTakeBreak(pkg))
 
         // Third break must be rejected! (Fixes R9)
-        val break3 = manager.requestEmergencyBreak(pkg, durationMinutes = 5)
+        val break3 = manager.requestEmergencyBreak(pkg, durationMinutes = 5, intention = "One more")
         assertFalse(break3)
         assertEquals(0, manager.getBreaksRemaining(pkg))
 
