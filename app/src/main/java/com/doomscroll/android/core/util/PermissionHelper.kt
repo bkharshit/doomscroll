@@ -19,8 +19,7 @@ object PermissionHelper {
         val enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
         val expectedServiceName = DoomscrollAccessibilityService::class.java.name
         return enabledServices.any { 
-            it.resolveInfo.serviceInfo.name == expectedServiceName ||
-            it.resolveInfo.serviceInfo.packageName == context.packageName
+            it.resolveInfo.serviceInfo.name == expectedServiceName
         }
     }
 
@@ -43,10 +42,6 @@ object PermissionHelper {
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    fun isOverlayPermissionGranted(context: Context): Boolean {
-        return Settings.canDrawOverlays(context)
-    }
-
     fun isBatteryOptimizationIgnored(context: Context): Boolean {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return true
         return powerManager.isIgnoringBatteryOptimizations(context.packageName)
@@ -60,15 +55,6 @@ object PermissionHelper {
 
     fun getUsageAccessSettingsIntent(): Intent {
         return Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-    }
-
-    fun getOverlaySettingsIntent(context: Context): Intent {
-        return Intent(
-            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-            Uri.parse("package:${context.packageName}")
-        ).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
     }

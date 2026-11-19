@@ -21,8 +21,13 @@ class DashboardViewModel(
     private val settingsRepository: SettingsRepository,
     private val usageRepository: UsageRepository,
     private val metricsRepository: MetricsRepository,
-    private val breakManager: MindfulBreakManager
+    private val breakManager: MindfulBreakManager,
+    /** Interception rule id -> package, for attributing blocks to the right app. */
+    private val rulePackages: Map<String, String>
 ) : ViewModel() {
+
+    /** Today's blocks per package, derived from per-rule counts (never estimated). */
+    private var blockedByPackage: Map<String, Int> = emptyMap()
 
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
@@ -36,6 +41,7 @@ class DashboardViewModel(
         viewModelScope.launch {
             metricsRepository.ensureDailyReset()
         }
+        breakManager.refreshDay()
 
         viewModelScope.launch {
             combine(
@@ -45,7 +51,8 @@ class DashboardViewModel(
                 metricsRepository.reelsBlockedToday,
                 metricsRepository.allTimeBlocked
             ) { masterEnabled, reelsEnabled, shortsEnabled, reelsToday, allTime ->
-                val timeSavedMin = (reelsToday * 45) / 60
+                // Average session saved estimate: 3 minutes per intercepted doomscroll loop
+                val timeSavedMin = reelsToday * 3
                 _uiState.update { current ->
                     current.copy(
                         isMasterShieldActive = masterEnabled,
@@ -60,25 +67,48 @@ class DashboardViewModel(
         }
 
         viewModelScope.launch {
+            combine(settingsRepository.isStrictLockdownEnabled, breakManager.breaksUsedToday) { strict, _ ->
+                strict to breakManager.getGlobalPausesRemaining(strict)
+            }.collect { (strict, pausesLeft) ->
+                _uiState.update { it.copy(isStrictLockdown = strict, globalPausesRemaining = pausesLeft) }
+            }
+        }
+
+        viewModelScope.launch {
+            metricsRepository.blockedTodayByRule.collect { byRule ->
+                blockedByPackage = byRule.entries
+                    .mapNotNull { (ruleId, count) -> rulePackages[ruleId]?.let { it to count } }
+                    .groupBy({ it.first }, { it.second })
+                    .mapValues { it.value.sum() }
+                loadUsageStats()
+            }
+        }
+
+        viewModelScope.launch {
             breakManager.breakSession.collect { session ->
                 _uiState.update { it.copy(breakSession = session) }
             }
         }
 
         viewModelScope.launch {
-            settingsRepository.getAppLimits().collect { limits ->
-                _uiState.update { it.copy(appLimits = limits) }
+            breakManager.tickingSeconds.collect { seconds ->
+                _uiState.update { it.copy(breakRemainingSeconds = seconds) }
             }
         }
 
         viewModelScope.launch {
-            loadUsageStats()
+            settingsRepository.getAppLimits().collect { limits ->
+                _uiState.update { it.copy(appLimits = limits) }
+                loadUsageStats()
+            }
         }
     }
 
     fun handleIntent(intent: DashboardIntent) {
         when (intent) {
             is DashboardIntent.ToggleMasterShield -> {
+                // Strict Lockdown must be switched off (with its 60 s wait) before the shield can be paused.
+                if (!intent.enabled && _uiState.value.isStrictLockdown) return
                 viewModelScope.launch {
                     settingsRepository.setMasterShieldEnabled(intent.enabled)
                 }
@@ -100,9 +130,10 @@ class DashboardViewModel(
                 _uiState.update { it.copy(isBreakDialogVisible = false) }
             }
             is DashboardIntent.StartBreak -> {
-                breakManager.startBreak(
+                breakManager.requestGlobalPause(
                     durationMinutes = intent.minutes,
-                    intention = intent.intention
+                    intention = intent.intention,
+                    isStrictLockdown = _uiState.value.isStrictLockdown
                 )
             }
             DashboardIntent.CancelBreak -> {
@@ -118,13 +149,11 @@ class DashboardViewModel(
     fun refreshPermissions() {
         val hasAccessibility = PermissionHelper.isAccessibilityServiceEnabled(context)
         val hasUsage = PermissionHelper.isUsageAccessGranted(context)
-        val hasOverlay = PermissionHelper.isOverlayPermissionGranted(context)
 
         _uiState.update {
             it.copy(
                 isAccessibilityPermissionGranted = hasAccessibility,
-                isUsagePermissionGranted = hasUsage,
-                isOverlayPermissionGranted = hasOverlay
+                isUsagePermissionGranted = hasUsage
             )
         }
     }
@@ -132,8 +161,7 @@ class DashboardViewModel(
     private fun loadUsageStats() {
         viewModelScope.launch {
             val limitsMap = _uiState.value.appLimits.associate { it.monitoredApp.packageName to it.dailyLimitMinutes }
-            val blockedMap = mapOf("com.instagram.android" to _uiState.value.reelsBlockedToday)
-            val stats = usageRepository.getUsageStatsForMonitoredApps(limitsMap, blockedMap)
+            val stats = usageRepository.getUsageStatsForMonitoredApps(limitsMap, blockedByPackage)
             _uiState.update { it.copy(appUsageStats = stats) }
         }
     }
@@ -143,12 +171,13 @@ class DashboardViewModel(
         private val settingsRepository: SettingsRepository,
         private val usageRepository: UsageRepository,
         private val metricsRepository: MetricsRepository,
-        private val breakManager: MindfulBreakManager
+        private val breakManager: MindfulBreakManager,
+        private val rulePackages: Map<String, String>
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             return DashboardViewModel(
-                context, settingsRepository, usageRepository, metricsRepository, breakManager
+                context, settingsRepository, usageRepository, metricsRepository, breakManager, rulePackages
             ) as T
         }
     }

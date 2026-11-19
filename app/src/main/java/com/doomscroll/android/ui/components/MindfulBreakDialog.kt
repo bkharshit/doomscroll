@@ -137,9 +137,11 @@ fun MindfulBreakDialog(
                 }
                 Button(
                     onClick = {
-                        onStartBreak(selectedMinutes, intention)
+                        onStartBreak(selectedMinutes, intention.trim())
                         onDismiss()
                     },
+                    // A typed intention is the friction: no intention, no pause.
+                    enabled = intention.isNotBlank(),
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = CoralPrimary),
                     shape = RoundedCornerShape(12.dp)

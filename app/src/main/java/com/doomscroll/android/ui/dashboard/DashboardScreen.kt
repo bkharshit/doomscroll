@@ -51,7 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -102,7 +102,9 @@ fun DashboardScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
-    var pauseMinutes by remember { mutableIntStateOf(15) }
+    var showPauseShieldDialog by remember { mutableStateOf(false) }
+    var showStrictInfoDialog by remember { mutableStateOf(false) }
+    val canPause = !state.isStrictLockdown && state.globalPausesRemaining > 0
 
     LaunchedEffect(Unit) {
         viewModel.handleIntent(DashboardIntent.RefreshPermissionsAndStats)
@@ -262,9 +264,12 @@ fun DashboardScreen(
                                         color = animatedColor
                                     )
                                 ) {
-                                    viewModel.handleIntent(
-                                        DashboardIntent.ToggleMasterShield(!state.isMasterShieldActive)
-                                    )
+                                    when {
+                                        !state.isMasterShieldActive ->
+                                            viewModel.handleIntent(DashboardIntent.ToggleMasterShield(true))
+                                        state.isStrictLockdown -> showStrictInfoDialog = true
+                                        else -> showPauseShieldDialog = true
+                                    }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
@@ -364,11 +369,7 @@ fun DashboardScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        val displaySaved = if (state.totalTimeSavedMinutes > 0) {
-                            TimeUtils.formatMinutes(state.totalTimeSavedMinutes)
-                        } else {
-                            "1h 45m"
-                        }
+                        val displaySaved = TimeUtils.formatMinutes(state.totalTimeSavedMinutes)
 
                         Text(
                             text = displaySaved,
@@ -378,7 +379,7 @@ fun DashboardScreen(
                             letterSpacing = (-0.5).sp
                         )
                         Text(
-                            text = "+22m vs yesterday",
+                            text = "Estimate: 3 min per intercept",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MintSecondary
@@ -426,11 +427,7 @@ fun DashboardScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        val displayIntercepts = if (state.reelsBlockedToday > 0) {
-                            "${state.reelsBlockedToday}"
-                        } else {
-                            "42"
-                        }
+                        val displayIntercepts = "${state.reelsBlockedToday}"
 
                         Text(
                             text = displayIntercepts,
@@ -514,9 +511,14 @@ fun DashboardScreen(
                                 )
                                 Text(
                                     text = if (state.breakSession.isActive) {
-                                        "${state.breakSession.remainingSeconds / 60}m"
+                                        val mins = state.breakRemainingSeconds / 60
+                                        val secs = state.breakRemainingSeconds % 60
+                                        String.format("%02d:%02d", mins, secs)
                                     } else {
-                                        "${pauseMinutes}m"
+                                        when {
+                                            state.isStrictLockdown -> "Strict"
+                                            else -> "${state.globalPausesRemaining} left today"
+                                        }
                                     },
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
@@ -544,7 +546,7 @@ fun DashboardScreen(
                                     color = MintSecondary
                                 )
                                 Text(
-                                    text = "${state.breakSession.remainingSeconds / 60} minutes remaining",
+                                    text = "${state.breakRemainingSeconds / 60}m ${state.breakRemainingSeconds % 60}s remaining",
                                     fontSize = 12.sp,
                                     color = TextMutedSlate
                                 )
@@ -583,64 +585,17 @@ fun DashboardScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Stepper
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(46.dp)
-                                    .neoRecessed(cornerRadius = 23.dp)
-                                    .padding(horizontal = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .neoExtrudedCircle(elevation = 2.dp)
-                                            .clip(CircleShape)
-                                            .clickable {
-                                                if (pauseMinutes > 5) pauseMinutes -= 5
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "−",
-                                            fontSize = 18.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = TextDark
-                                        )
-                                    }
-
-                                    Text(
-                                        text = "$pauseMinutes minutes",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = TextDark
-                                    )
-
-                                    Box(
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .neoExtrudedCircle(elevation = 2.dp)
-                                            .clip(CircleShape)
-                                            .clickable {
-                                                if (pauseMinutes < 60) pauseMinutes += 5
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "+",
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = TextDark
-                                        )
-                                    }
-                                }
-                            }
+                            Text(
+                                text = when {
+                                    state.isStrictLockdown -> "Strict Lockdown is on: no pauses."
+                                    state.globalPausesRemaining > 0 -> "Pauses every app. ${state.globalPausesRemaining} left today."
+                                    else -> "You've used today's pause. It resets at midnight."
+                                },
+                                modifier = Modifier.weight(1f),
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp,
+                                color = TextMutedSlate
+                            )
 
                             // Coral Start Button
                             Box(
@@ -648,14 +603,14 @@ fun DashboardScreen(
                                     .height(46.dp)
                                     .clip(RoundedCornerShape(23.dp))
                                     .background(
-                                        Brush.horizontalGradient(
-                                            listOf(CoralGradientStart, CoralGradientEnd)
-                                        )
+                                        if (canPause) {
+                                            Brush.horizontalGradient(listOf(CoralGradientStart, CoralGradientEnd))
+                                        } else {
+                                            Brush.horizontalGradient(listOf(TactileSurfaceVariant, TactileSurfaceVariant))
+                                        }
                                     )
-                                    .clickable {
-                                        viewModel.handleIntent(
-                                            DashboardIntent.StartBreak(pauseMinutes, "Conscious Pause")
-                                        )
+                                    .clickable(enabled = canPause) {
+                                        viewModel.handleIntent(DashboardIntent.ShowBreakDialog)
                                     }
                                     .padding(horizontal = 18.dp),
                                 contentAlignment = Alignment.Center
@@ -805,5 +760,40 @@ fun DashboardScreen(
         item {
             Spacer(modifier = Modifier.height(160.dp))
         }
+    }
+
+    if (state.isBreakDialogVisible) {
+        com.doomscroll.android.ui.components.MindfulBreakDialog(
+            onDismiss = {
+                viewModel.handleIntent(DashboardIntent.DismissBreakDialog)
+            },
+            onStartBreak = { minutes, intention ->
+                viewModel.handleIntent(DashboardIntent.StartBreak(minutes, intention))
+                viewModel.handleIntent(DashboardIntent.DismissBreakDialog)
+            }
+        )
+    }
+
+    if (showPauseShieldDialog) {
+        com.doomscroll.android.ui.components.FrictionConfirmDialog(
+            title = "Turn protection off?",
+            message = "Reels, Shorts and daily limits stop being enforced until you turn protection back on. " +
+                "If you only need a few minutes, use a Conscious Pause instead.",
+            waitSeconds = 10,
+            confirmLabel = "Turn off",
+            onConfirm = {
+                showPauseShieldDialog = false
+                viewModel.handleIntent(DashboardIntent.ToggleMasterShield(false))
+            },
+            onDismiss = { showPauseShieldDialog = false }
+        )
+    }
+
+    if (showStrictInfoDialog) {
+        com.doomscroll.android.ui.components.InfoDialog(
+            title = "Strict Lockdown is on",
+            message = "Protection can't be turned off while Strict Lockdown is on. Turn Strict Lockdown off in Settings first (it takes a 60-second wait).",
+            onDismiss = { showStrictInfoDialog = false }
+        )
     }
 }

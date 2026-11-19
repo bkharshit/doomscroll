@@ -71,6 +71,8 @@ import com.doomscroll.android.ui.theme.TextSecondarySlate
 fun BlockedScreen(
     appName: String,
     reason: String,
+    breaksRemaining: Int = 2,
+    isStrictLockdown: Boolean = false,
     onExitToHome: () -> Unit,
     onRequestBreak: () -> Unit,
     modifier: Modifier = Modifier
@@ -444,13 +446,14 @@ fun BlockedScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Secondary Mindful Action: 5 minutes request
+            // Secondary Mindful Action: Limited emergency break with friction
+            val canBreak = breaksRemaining > 0 && !isStrictLockdown
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp)
-                    .neoExtruded(cornerRadius = 18.dp, elevation = 3.dp)
-                    .clickable { onRequestBreak() },
+                    .neoExtruded(cornerRadius = 18.dp, elevation = if (canBreak) 3.dp else 1.dp)
+                    .clickable(enabled = canBreak) { onRequestBreak() },
                 contentAlignment = Alignment.Center
             ) {
                 Row(
@@ -460,14 +463,18 @@ fun BlockedScreen(
                     Icon(
                         imageVector = Icons.Default.Timer,
                         contentDescription = null,
-                        tint = TextMutedSlate,
+                        tint = if (canBreak) TextMutedSlate else Color.Gray.copy(alpha = 0.5f),
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "I need 5 minutes intentionally",
+                        text = when {
+                            isStrictLockdown -> "Strict Lockdown: No breaks allowed"
+                            canBreak -> "I need 5m intentionally ($breaksRemaining left today)"
+                            else -> "No emergency breaks left today"
+                        },
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = TextDark
+                        color = if (canBreak) TextDark else TextMutedSlate
                     )
                 }
             }

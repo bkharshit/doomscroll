@@ -1,8 +1,8 @@
 package com.doomscroll.android
 
-import com.doomscroll.android.domain.interceptor.InstagramReelsStrategy
+import com.doomscroll.android.domain.interceptor.InstagramReelsRule
 import com.doomscroll.android.domain.interceptor.InterceptionEngine
-import com.doomscroll.android.domain.interceptor.YouTubeShortsStrategy
+import com.doomscroll.android.domain.interceptor.YouTubeShortsRule
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,7 +12,7 @@ class InterceptionEngineTest {
     @Test
     fun testPackageFiltering() {
         val engine = InterceptionEngine(
-            listOf(InstagramReelsStrategy(), YouTubeShortsStrategy())
+            listOf(InstagramReelsRule(), YouTubeShortsRule())
         )
 
         assertTrue(engine.shouldProcessPackage("com.instagram.android"))

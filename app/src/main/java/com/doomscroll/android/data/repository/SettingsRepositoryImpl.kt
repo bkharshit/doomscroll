@@ -13,6 +13,7 @@ class SettingsRepositoryImpl(
     override val isMasterShieldEnabled: Flow<Boolean> = dataStore.isMasterShieldEnabled
     override val isReelsInterceptionEnabled: Flow<Boolean> = dataStore.isReelsInterceptionEnabled
     override val isShortsInterceptionEnabled: Flow<Boolean> = dataStore.isShortsInterceptionEnabled
+    override val isStrictLockdownEnabled: Flow<Boolean> = dataStore.isStrictLockdownEnabled
     override val breakDurationMinutes: Flow<Int> = dataStore.breakDurationMinutes
 
     override fun getAppLimits(): Flow<List<AppLimit>> {
@@ -54,6 +55,10 @@ class SettingsRepositoryImpl(
 
     override suspend fun setShortsInterceptionEnabled(enabled: Boolean) {
         dataStore.setShortsInterceptionEnabled(enabled)
+    }
+
+    override suspend fun setStrictLockdownEnabled(enabled: Boolean) {
+        dataStore.setStrictLockdownEnabled(enabled)
     }
 
     override suspend fun setDailyLimit(packageName: String, minutes: Int) {

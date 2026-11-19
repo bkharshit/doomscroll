@@ -22,19 +22,28 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockClock
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.doomscroll.android.DoomscrollApp
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,13 +81,30 @@ fun PermissionsAssistantScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
 
-    val hasAccessibility = PermissionHelper.isAccessibilityServiceEnabled(context)
-    val hasUsage = PermissionHelper.isUsageAccessGranted(context)
-    val hasOverlay = PermissionHelper.isOverlayPermissionGranted(context)
-    val hasBattery = PermissionHelper.isBatteryOptimizationIgnored(context)
+    var hasAccessibility by remember { mutableStateOf(PermissionHelper.isAccessibilityServiceEnabled(context)) }
+    var hasUsage by remember { mutableStateOf(PermissionHelper.isUsageAccessGranted(context)) }
+    var hasBattery by remember { mutableStateOf(PermissionHelper.isBatteryOptimizationIgnored(context)) }
+    var showAccessibilityDisclosure by remember { mutableStateOf(false) }
+    var showStrictOffDialog by remember { mutableStateOf(false) }
 
-    var isStrictLockdownEnabled by remember { mutableStateOf(true) }
+    val isStrictLockdownEnabled by DoomscrollApp.instance.settingsRepository.isStrictLockdownEnabled.collectAsState(initial = false)
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasAccessibility = PermissionHelper.isAccessibilityServiceEnabled(context)
+                hasUsage = PermissionHelper.isUsageAccessGranted(context)
+                hasBattery = PermissionHelper.isBatteryOptimizationIgnored(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     LazyColumn(
         modifier = modifier
@@ -201,7 +227,11 @@ fun PermissionsAssistantScreen(
                 activeLabel = "Active",
                 inactiveLabel = "Enable in Settings",
                 onAction = {
-                    context.startActivity(PermissionHelper.getAccessibilitySettingsIntent())
+                    if (!hasAccessibility) {
+                        showAccessibilityDisclosure = true
+                    } else {
+                        context.startActivity(PermissionHelper.getAccessibilitySettingsIntent())
+                    }
                 }
             )
         }
@@ -223,27 +253,12 @@ fun PermissionsAssistantScreen(
             )
         }
 
-        // Permission Card 3: Overlay Privilege
+        // Permission Card 3: Battery Saver Exemption
+        // (No overlay card: the block screen is a normal activity started by the accessibility service,
+        // and SYSTEM_ALERT_WINDOW is no longer declared, so it could never be granted.)
         item {
             TactilePermissionCard(
                 stepNumber = "3",
-                title = "Overlay Privilege",
-                description = "Displays mindful breathers and lockouts when infinite feeds are opened.",
-                tag = "LOCKOUT LAYER",
-                icon = Icons.Default.Layers,
-                isGranted = hasOverlay,
-                activeLabel = "Granted",
-                inactiveLabel = "Grant Overlay",
-                onAction = {
-                    context.startActivity(PermissionHelper.getOverlaySettingsIntent(context))
-                }
-            )
-        }
-
-        // Permission Card 4: Battery Saver Exemption
-        item {
-            TactilePermissionCard(
-                stepNumber = "4",
                 title = "Battery Saver Exemption",
                 description = "Prevents OEM power managers from killing shield persistence in sleep state.",
                 tag = "PERSISTENCE LOOP",
@@ -308,7 +323,16 @@ fun PermissionsAssistantScreen(
 
                     NeumorphicToggle(
                         checked = isStrictLockdownEnabled,
-                        onCheckedChange = { isStrictLockdownEnabled = it }
+                        onCheckedChange = { enabled ->
+                            if (enabled) {
+                                scope.launch {
+                                    DoomscrollApp.instance.settingsRepository.setStrictLockdownEnabled(true)
+                                }
+                            } else {
+                                // Turning it off costs a 60 s wait, as the card promises.
+                                showStrictOffDialog = true
+                            }
+                        }
                     )
                 }
             }
@@ -446,6 +470,62 @@ fun PermissionsAssistantScreen(
         item {
             Spacer(modifier = Modifier.height(160.dp))
         }
+    }
+
+    if (showStrictOffDialog) {
+        com.doomscroll.android.ui.components.FrictionConfirmDialog(
+            title = "Turn off Strict Lockdown?",
+            message = "Strict Lockdown blocks emergency breaks, dashboard pauses and turning protection off. " +
+                "Wait 60 seconds and decide if you still want it off.",
+            waitSeconds = 60,
+            confirmLabel = "Turn off",
+            onConfirm = {
+                showStrictOffDialog = false
+                scope.launch {
+                    DoomscrollApp.instance.settingsRepository.setStrictLockdownEnabled(false)
+                }
+            },
+            onDismiss = { showStrictOffDialog = false }
+        )
+    }
+
+    if (showAccessibilityDisclosure) {
+        AlertDialog(
+            onDismissRequest = { showAccessibilityDisclosure = false },
+            title = {
+                Text(
+                    text = "Accessibility Service Disclosure",
+                    fontWeight = FontWeight.Bold,
+                    color = TextDark
+                )
+            },
+            text = {
+                Text(
+                    text = "Doomscroll uses Android's AccessibilityService API exclusively for self-control enforcement:\n\n" +
+                            "• Real-time detection: Detects when short-form video feeds (Reels & Shorts) are open in Instagram and YouTube.\n" +
+                            "• Surgical Exit: Automates a single tap on the Home or Back button to help you exit doomscrolling loops.\n\n" +
+                            "Privacy Guarantee: No personal data, messages, keystrokes, audio, or account information is ever recorded, stored, or transmitted. All logic runs 100% locally on your device.",
+                    color = TextMutedSlate,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showAccessibilityDisclosure = false
+                        context.startActivity(PermissionHelper.getAccessibilitySettingsIntent())
+                    }
+                ) {
+                    Text("Accept & Continue", fontWeight = FontWeight.Bold, color = CoralPrimary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAccessibilityDisclosure = false }) {
+                    Text("Decline", color = TextMutedSlate)
+                }
+            }
+        )
     }
 }
 

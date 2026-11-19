@@ -87,7 +87,8 @@ class MainActivity : ComponentActivity() {
             settingsRepository = app.settingsRepository,
             usageRepository = app.usageRepository,
             metricsRepository = app.metricsRepository,
-            breakManager = app.breakManager
+            breakManager = app.breakManager,
+            rulePackages = app.interceptionEngine.rulePackages
         )
     }
 

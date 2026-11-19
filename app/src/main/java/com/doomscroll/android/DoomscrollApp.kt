@@ -4,9 +4,7 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import com.doomscroll.android.data.local.BreakDataStore
 import com.doomscroll.android.data.local.PreferencesDataStore
 import com.doomscroll.android.data.repository.MetricsRepository
 import com.doomscroll.android.data.repository.MetricsRepositoryImpl
@@ -51,13 +49,9 @@ class DoomscrollApp : Application() {
         metricsRepository = MetricsRepositoryImpl(preferencesDataStore)
         interceptionEngine = InterceptionEngine()
         usageLimitEnforcer = UsageLimitEnforcer(this)
-        breakManager = MindfulBreakManager()
+        breakManager = MindfulBreakManager(store = BreakDataStore(this))
 
         createNotificationChannels()
-
-        CoroutineScope(Dispatchers.IO).launch {
-            preferencesDataStore.initializeDefaultLimits()
-        }
     }
 
     private fun createNotificationChannels() {

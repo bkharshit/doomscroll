@@ -8,6 +8,7 @@ interface SettingsRepository {
     val isMasterShieldEnabled: Flow<Boolean>
     val isReelsInterceptionEnabled: Flow<Boolean>
     val isShortsInterceptionEnabled: Flow<Boolean>
+    val isStrictLockdownEnabled: Flow<Boolean>
     val breakDurationMinutes: Flow<Int>
     
     fun getAppLimits(): Flow<List<AppLimit>>
@@ -17,6 +18,7 @@ interface SettingsRepository {
     suspend fun setMasterShieldEnabled(enabled: Boolean)
     suspend fun setReelsInterceptionEnabled(enabled: Boolean)
     suspend fun setShortsInterceptionEnabled(enabled: Boolean)
+    suspend fun setStrictLockdownEnabled(enabled: Boolean)
     suspend fun setDailyLimit(packageName: String, minutes: Int)
     suspend fun setAppBlockEnabled(packageName: String, enabled: Boolean)
 }

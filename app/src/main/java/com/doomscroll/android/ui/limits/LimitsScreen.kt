@@ -46,8 +46,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.doomscroll.android.R
 import com.doomscroll.android.core.model.AppLimit
+import com.doomscroll.android.core.model.LimitPolicy
 import com.doomscroll.android.core.model.MonitoredApp
 import com.doomscroll.android.core.model.UsageStat
+import com.doomscroll.android.ui.components.NeumorphicToggle
 import com.doomscroll.android.core.util.TimeUtils
 import com.doomscroll.android.ui.components.TactileProgressSlider
 import com.doomscroll.android.ui.components.neoExtruded
@@ -85,17 +87,21 @@ fun LimitsScreen(
     val totalUsageMinutes = state.usageStats.values.sumOf { it.usageMinutes }
     val displayTotalUsage = if (totalUsageMinutes > 0) TimeUtils.formatMinutes(totalUsageMinutes) else "0m"
 
+    // No history (still loading, or no usage access): empty placeholder bars, never invented numbers.
     val days = state.weeklyUsage.ifEmpty {
-        val calendar = java.util.Calendar.getInstance()
-        val dayLetters = listOf("S", "M", "T", "W", "T", "F", "S")
-        val fullDayNames = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
-        val todayDow = calendar.get(java.util.Calendar.DAY_OF_WEEK) - 1
-
+        val today = java.time.LocalDate.now()
+        val locale = java.util.Locale.getDefault()
         (6 downTo 0).map { daysAgo ->
-            val dow = (todayDow - daysAgo + 7) % 7
-            val short = dayLetters[dow]
-            val full = if (daysAgo == 0) "${fullDayNames[dow]} (Today)" else fullDayNames[dow]
-            DayUsageData(short, full, if (daysAgo == 0) displayTotalUsage else "0m", 0.25f, "Avg baseline", true)
+            val dow = today.minusDays(daysAgo.toLong()).dayOfWeek
+            val full = dow.getDisplayName(java.time.format.TextStyle.FULL, locale)
+            DayUsageData(
+                shortLabel = dow.getDisplayName(java.time.format.TextStyle.NARROW, locale),
+                fullName = if (daysAgo == 0) "$full (Today)" else full,
+                durationText = "—",
+                fillRatio = 0.04f,
+                vsAvgText = "No data",
+                isBetterThanAvg = true
+            )
         }
     }
 
@@ -209,7 +215,7 @@ fun LimitsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(130.dp)
+                            .height(144.dp)
                             .padding(top = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.Bottom
@@ -326,39 +332,20 @@ fun LimitsScreen(
 
         // App Quotas Cards
         if (displayedAppLimits.isEmpty()) {
-            // Default visual representation if no monitored apps yet
             item {
-                AppQuotaCard(
-                    appName = "Instagram",
-                    category = "Social",
-                    usedMinutes = 48,
-                    limitMinutes = 75,
-                    isBlocked = false,
-                    accentColor = CoralPrimary,
-                    onLimitChange = {}
-                )
-            }
-            item {
-                AppQuotaCard(
-                    appName = "YouTube",
-                    category = "Entertainment",
-                    usedMinutes = 18,
-                    limitMinutes = 60,
-                    isBlocked = false,
-                    accentColor = MintSecondary,
-                    onLimitChange = {}
-                )
-            }
-            item {
-                AppQuotaCard(
-                    appName = "Reddit",
-                    category = "Forums",
-                    usedMinutes = 5,
-                    limitMinutes = 30,
-                    isBlocked = false,
-                    accentColor = CoralPrimary,
-                    onLimitChange = {}
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .neoRecessed(cornerRadius = 16.dp)
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Loading configured limits...",
+                        fontSize = 13.sp,
+                        color = TextMutedSlate
+                    )
+                }
             }
         } else {
             items(displayedAppLimits) { appLimit ->
@@ -375,6 +362,9 @@ fun LimitsScreen(
                     accentColor = if (used >= limit) CoralPrimary else MintSecondary,
                     onLimitChange = { newMinutes ->
                         viewModel.updateLimit(appLimit.monitoredApp.packageName, newMinutes)
+                    },
+                    onToggleBlock = { enabled ->
+                        viewModel.toggleAppBlock(appLimit.monitoredApp.packageName, enabled)
                     }
                 )
             }
@@ -394,7 +384,8 @@ fun AppQuotaCard(
     limitMinutes: Int,
     isBlocked: Boolean,
     accentColor: Color,
-    onLimitChange: (Int) -> Unit
+    onLimitChange: (Int) -> Unit,
+    onToggleBlock: (Boolean) -> Unit = {}
 ) {
     val progress = if (limitMinutes > 0) {
         (usedMinutes.toFloat() / limitMinutes.toFloat()).coerceIn(0f, 1f)
@@ -548,12 +539,19 @@ fun AppQuotaCard(
                         )
                     }
                 }
+
+                // Toggle per-app block (Fixes R12)
+                NeumorphicToggle(
+                    checked = isBlocked,
+                    onCheckedChange = { onToggleBlock(it) }
+                )
             }
 
-            // Slider Section (Configures Limit Ceiling from 15m up to 5 hours)
-            val minLimit = 15
-            val maxLimit = 300 // 5 hours max
-            val sliderRatio = ((limitMinutes - minLimit).toFloat() / (maxLimit - minLimit).toFloat()).coerceIn(0f, 1f)
+            // Slider Section (Configures Limit Ceiling from 5m up to 5 hours, fixes R15 & R22)
+            val minLimit = LimitPolicy.MIN
+            val maxLimit = LimitPolicy.MAX
+            var draftMinutes by remember(limitMinutes) { mutableIntStateOf(limitMinutes) }
+            val sliderRatio = ((draftMinutes - minLimit).toFloat() / (maxLimit - minLimit).toFloat()).coerceIn(0f, 1f)
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
@@ -568,7 +566,7 @@ fun AppQuotaCard(
                         color = TextMutedSlate
                     )
                     Text(
-                        text = TimeUtils.formatMinutes(limitMinutes),
+                        text = TimeUtils.formatMinutes(draftMinutes),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = accentColor
@@ -579,8 +577,11 @@ fun AppQuotaCard(
                     value = sliderRatio,
                     onValueChange = { newRatio ->
                         val rawMins = minLimit + (newRatio * (maxLimit - minLimit)).toInt()
-                        val snapped = ((rawMins + 2) / 5 * 5).coerceIn(minLimit, maxLimit)
-                        onLimitChange(snapped)
+                        val snapped = ((rawMins + 2) / LimitPolicy.STEP * LimitPolicy.STEP).coerceIn(minLimit, maxLimit)
+                        draftMinutes = snapped
+                    },
+                    onValueChangeFinished = {
+                        onLimitChange(draftMinutes)
                     },
                     fillBrush = Brush.horizontalGradient(
                         if (isOverLimit) {
@@ -597,11 +598,11 @@ fun AppQuotaCard(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    listOf(15, 60, 120, 180, 300).forEach { mins ->
-                        val isPresetSelected = limitMinutes == mins
+                    listOf(LimitPolicy.MIN, 60, 120, 180, LimitPolicy.MAX).forEach { mins ->
+                        val isPresetSelected = draftMinutes == mins
                         Text(
                             text = when (mins) {
-                                15 -> "15m"
+                                LimitPolicy.MIN -> "${LimitPolicy.MIN}m"
                                 60 -> "1h"
                                 120 -> "2h"
                                 180 -> "3h"
@@ -613,7 +614,10 @@ fun AppQuotaCard(
                             color = if (isPresetSelected) CoralPrimary else TextMutedSlate,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .clickable { onLimitChange(mins) }
+                                .clickable {
+                                    draftMinutes = mins
+                                    onLimitChange(mins)
+                                }
                                 .padding(horizontal = 4.dp, vertical = 2.dp)
                         )
                     }

@@ -1,15 +1,21 @@
 package com.doomscroll.android.data.repository
 
+import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.util.Log
 import com.doomscroll.android.core.model.DayUsageData
 import com.doomscroll.android.core.model.MonitoredApp
 import com.doomscroll.android.core.model.UsageStat
+import com.doomscroll.android.core.util.ForegroundCalculator
 import com.doomscroll.android.core.util.TimeUtils
+import com.doomscroll.android.core.util.UsageEvt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.Calendar
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.TextStyle
+import java.util.Locale
 
 interface UsageRepository {
     suspend fun getTodayUsageSeconds(packageName: String): Long
@@ -53,13 +59,54 @@ class UsageRepositoryImpl(
 
     /**
      * Accurately calculates today's foreground seconds matching Android System Settings (Digital Wellbeing).
-     * Uses the device's authoritative daily UsageStats bucket for today.
+     * Uses the device's authoritative raw UsageEvents stream processed through ForegroundCalculator.
      */
     private fun getTodayForegroundSecondsMap(targetPackages: Set<String>): Map<String, Long> {
         val usm = usageStatsManager ?: return emptyMap()
         val startTime = TimeUtils.getStartOfTodayMillis()
         val endTime = System.currentTimeMillis()
+        val lookbackMillis = 3 * 3600 * 1000L // 3 hours lookback to catch sessions open at midnight
 
+        return try {
+            val usageEvents = usm.queryEvents(startTime - lookbackMillis, endTime)
+            val eventsList = mutableListOf<UsageEvt>()
+            val event = UsageEvents.Event()
+
+            while (usageEvents != null && usageEvents.hasNextEvent()) {
+                usageEvents.getNextEvent(event)
+                eventsList.add(
+                    UsageEvt(
+                        packageName = event.packageName ?: "",
+                        className = event.className,
+                        eventType = event.eventType,
+                        timestampMillis = event.timeStamp
+                    )
+                )
+            }
+
+            if (eventsList.isNotEmpty()) {
+                ForegroundCalculator.computeSeconds(
+                    events = eventsList,
+                    fromMillis = startTime,
+                    nowMillis = endTime,
+                    packages = targetPackages
+                )
+            } else {
+                // Fallback to queryUsageStats if no events returned
+                fallbackQueryUsageStats(usm, startTime, endTime, targetPackages)
+            }
+        } catch (e: Exception) {
+            Log.e("UsageRepository", "Failed to query usage events, falling back", e)
+            fallbackQueryUsageStats(usm, startTime, endTime, targetPackages)
+        }
+    }
+
+    private fun fallbackQueryUsageStats(
+        usm: UsageStatsManager,
+        startTime: Long,
+        endTime: Long,
+        targetPackages: Set<String>
+    ): Map<String, Long> {
         return try {
             val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
             if (stats.isNullOrEmpty()) {
@@ -67,27 +114,26 @@ class UsageRepositoryImpl(
             } else {
                 targetPackages.associateWith { pkg ->
                     val matching = stats.filter { it.packageName == pkg }
-                    // Find the authoritative daily record active for today
                     val best = matching.filter { it.lastTimeUsed >= startTime }.maxByOrNull { it.lastTimeStamp }
                         ?: matching.maxByOrNull { it.lastTimeStamp }
                     (best?.totalTimeInForeground ?: 0L) / 1000L
                 }
             }
         } catch (e: Exception) {
-            Log.e("UsageRepository", "Failed to query usage stats", e)
+            Log.e("UsageRepository", "Fallback queryUsageStats failed", e)
             emptyMap()
         }
     }
 
     /**
      * Queries real daily usage stats from Android's database for each of the past 7 days.
+     * Uses java.time for accurate timezone and DST handling.
      */
     override suspend fun getWeeklyUsageHistory(): List<DayUsageData> = withContext(Dispatchers.IO) {
         val usm = usageStatsManager ?: return@withContext emptyList()
         val allMonitoredPackages = MonitoredApp.entries.map { it.packageName }.toSet()
-
-        val dayLetters = listOf("S", "M", "T", "W", "T", "F", "S")
-        val fullDayNames = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now(zone)
 
         data class RawDay(
             val shortLabel: String,
@@ -98,40 +144,38 @@ class UsageRepositoryImpl(
 
         val rawDays = mutableListOf<RawDay>()
 
+        // Precompute today's accurate seconds from queryEvents
+        val todayMap = getTodayForegroundSecondsMap(allMonitoredPackages)
+        val todayTotalSeconds = todayMap.values.sum()
+
         // Query each day from 6 days ago up to today
         for (daysAgo in 6 downTo 0) {
-            val cal = Calendar.getInstance()
-            cal.add(Calendar.DAY_OF_YEAR, -daysAgo)
-            val dow = cal.get(Calendar.DAY_OF_WEEK) - 1 // 0..6
-            val short = dayLetters[dow]
-            val full = if (daysAgo == 0) "${fullDayNames[dow]} (Today)" else fullDayNames[dow]
+            val date = today.minusDays(daysAgo.toLong())
+            val short = date.dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault())
+            val fullDayName = date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
+            val full = if (daysAgo == 0) "$fullDayName (Today)" else fullDayName
 
-            cal.set(Calendar.HOUR_OF_DAY, 0)
-            cal.set(Calendar.MINUTE, 0)
-            cal.set(Calendar.SECOND, 0)
-            cal.set(Calendar.MILLISECOND, 0)
-            val dayStart = cal.timeInMillis
-
-            cal.set(Calendar.HOUR_OF_DAY, 23)
-            cal.set(Calendar.MINUTE, 59)
-            cal.set(Calendar.SECOND, 59)
-            cal.set(Calendar.MILLISECOND, 999)
-            val dayEnd = if (daysAgo == 0) System.currentTimeMillis() else cal.timeInMillis
-
-            var daySeconds = 0L
-            try {
-                val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, dayStart, dayEnd)
-                if (!stats.isNullOrEmpty()) {
-                    for (pkg in allMonitoredPackages) {
-                        val matching = stats.filter { it.packageName == pkg }
-                        val best = matching.filter { it.lastTimeUsed in dayStart..dayEnd }.maxByOrNull { it.lastTimeStamp }
-                            ?: matching.filter { it.lastTimeUsed >= dayStart }.maxByOrNull { it.lastTimeStamp }
-                            ?: matching.maxByOrNull { it.lastTimeStamp }
-                        daySeconds += (best?.totalTimeInForeground ?: 0L) / 1000L
+            val daySeconds = if (daysAgo == 0) {
+                todayTotalSeconds
+            } else {
+                val dayStart = date.atStartOfDay(zone).toInstant().toEpochMilli()
+                val dayEnd = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+                var pastSeconds = 0L
+                try {
+                    val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, dayStart, dayEnd)
+                    if (!stats.isNullOrEmpty()) {
+                        for (pkg in allMonitoredPackages) {
+                            val matching = stats.filter { it.packageName == pkg }
+                            val best = matching.filter { it.lastTimeUsed in dayStart..dayEnd }.maxByOrNull { it.lastTimeStamp }
+                                ?: matching.filter { it.lastTimeUsed >= dayStart }.maxByOrNull { it.lastTimeStamp }
+                                ?: matching.maxByOrNull { it.lastTimeStamp }
+                            pastSeconds += (best?.totalTimeInForeground ?: 0L) / 1000L
+                        }
                     }
+                } catch (e: Exception) {
+                    Log.e("UsageRepository", "Error querying stats for day -$daysAgo", e)
                 }
-            } catch (e: Exception) {
-                Log.e("UsageRepository", "Error querying stats for day -$daysAgo", e)
+                pastSeconds
             }
 
             rawDays.add(RawDay(short, full, daySeconds, daysAgo == 0))
