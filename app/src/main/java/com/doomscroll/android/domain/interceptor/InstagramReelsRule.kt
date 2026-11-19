@@ -26,6 +26,9 @@ class InstagramReelsRule : InterceptionRule {
         const val ID_CAMERA_POST_CAPTURE = "com.instagram.android:id/post_capture_controls_container"
         const val ID_CAMERA_PERMISSIONS = "com.instagram.android:id/camera_permissions_cover"
 
+        // In-app back button on full-screen Reels opened from Explore/Search/Profile
+        const val ID_BACK_BUTTON = "com.instagram.android:id/action_bar_button_back"
+
         // Direct Message Exemption
         const val ID_THREAD_COMPOSER = "com.instagram.android:id/row_thread_composer_edittext"
     }
@@ -95,7 +98,7 @@ class InstagramReelsRule : InterceptionRule {
             // Opened from Explore, Search, or Profile: click in-app back (or pop with Back)
             return Decision.Act(
                 reason = "Instagram Reel Opened",
-                action = Action.ClickInAppBack
+                action = Action.ClickInAppBack(listOf(ID_BACK_BUTTON))
             )
         }
 
