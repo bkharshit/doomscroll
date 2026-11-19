@@ -45,6 +45,11 @@ class BreakNotifier(
         }
     }
 
+    /** Re-posts the running break's notification, e.g. right after notification permission is granted. */
+    fun refresh() {
+        breakManager.breakSession.value.takeIf { it.isActive }?.let { show(it) }
+    }
+
     private fun show(session: BreakSession) {
         if (!hasPermission(context)) return
         val endIntent = PendingIntent.getBroadcast(

@@ -91,12 +91,15 @@ sealed class Screen(val title: String, val icon: ImageVector) {
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var breakManager: MindfulBreakManager
+    @Inject lateinit var breakNotifier: BreakNotifier
 
     private val dashboardViewModel: DashboardViewModel by viewModels()
     private val limitsViewModel: LimitsViewModel by viewModels()
 
     private val notificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) breakNotifier.refresh() // the break started before permission existed
+        }
     private var askedForNotifications = false
 
     override fun onCreate(savedInstanceState: Bundle?) {

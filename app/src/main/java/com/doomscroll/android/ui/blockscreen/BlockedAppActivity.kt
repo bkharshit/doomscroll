@@ -24,6 +24,7 @@ class BlockedAppActivity : ComponentActivity() {
 
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var breakManager: MindfulBreakManager
+    @Inject lateinit var breakNotifier: BreakNotifier
 
     companion object {
         const val EXTRA_PACKAGE_NAME = "extra_package_name"
@@ -34,7 +35,10 @@ class BlockedAppActivity : ComponentActivity() {
 
     // Ask once for notification permission (API 33+) so the break countdown can show; leave either way.
     private val notificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { finish() }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) breakNotifier.refresh() // the break started before permission existed
+            finish()
+        }
 
     private fun finishAfterBreakStarted() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !BreakNotifier.hasPermission(this)) {
