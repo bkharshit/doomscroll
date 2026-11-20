@@ -9,6 +9,7 @@
   <img alt="Hilt" src="https://img.shields.io/badge/DI-Hilt-FF6F00" />
   <img alt="64 unit tests" src="https://img.shields.io/badge/unit%20tests-64-2EA44F" />
   <img alt="No internet permission" src="https://img.shields.io/badge/network-none-555555" />
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue" /></a>
 </p>
 
 # Doomscroll
@@ -249,3 +250,8 @@ The rewrite was planned before it was coded:
 
 Code comments cite these IDs wherever a line exists because of a finding (for example the R4 fix in
 `InstagramReelsRule`), so a change can be traced back to the problem that motivated it.
+
+## License
+
+Released under the [MIT License](LICENSE). The license covers the source code. It doesn't grant the
+right to use the Doomscroll name or logo to identify another app.
