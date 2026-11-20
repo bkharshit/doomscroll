@@ -94,6 +94,7 @@ class DoomscrollAccessibilityService : AccessibilityService() {
         private const val TAG = "DoomscrollA11y"
         /** Lets window transitions settle before asking which app window is active. */
         private const val FOREGROUND_RESOLVE_DELAY_MS = 300L
+        private const val RETRY_SLACK_MS = 50L
     }
 
     override fun onCreate() {
@@ -257,7 +258,16 @@ class DoomscrollAccessibilityService : AccessibilityService() {
                 root.findAccessibilityNodeInfosByViewId(viewId).orEmpty().map { A11yUiNode(pool.track(it), pool) }
             }
             val decision = interceptionEngine.evaluate(screen)
-            if (decision is Decision.Act) mainHandler.post { executeOnMain(pkg, decision) }
+            when (decision) {
+                is Decision.Act -> mainHandler.post { executeOnMain(pkg, decision) }
+                // Still on short-form content right after acting: look again once the cooldown ends.
+                is Decision.RetryAfter -> {
+                    evalHandler.removeCallbacks(evalRunnable)
+                    evalScheduled.set(true)
+                    evalHandler.postDelayed(evalRunnable, decision.millis + RETRY_SLACK_MS)
+                }
+                Decision.Pass -> Unit
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error evaluating $pkg", e)
         } finally {

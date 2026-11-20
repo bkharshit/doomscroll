@@ -20,7 +20,8 @@ class ActionExecutor(
 
     fun execute(action: Action, root: AccessibilityNodeInfo): Boolean {
         return when (action) {
-            is Action.Click -> clickFirstById(root, action.targetViewId)
+            is Action.Click -> clickFirstById(root, action.targetViewId) ||
+                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
 
             is Action.ClickInAppBack -> {
                 action.viewIds.any { clickFirstById(root, it) } ||
