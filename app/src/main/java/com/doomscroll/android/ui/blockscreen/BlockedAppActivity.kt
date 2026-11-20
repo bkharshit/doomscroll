@@ -75,6 +75,7 @@ class BlockedAppActivity : ComponentActivity() {
 
                 BlockedScreen(
                     appName = displayName,
+                    packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME),
                     reason = reason,
                     breaksRemaining = remaining,
                     breaksUsedToday = usedToday,

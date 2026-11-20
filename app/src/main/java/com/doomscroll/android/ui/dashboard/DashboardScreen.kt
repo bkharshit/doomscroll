@@ -67,6 +67,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.doomscroll.android.R
 import com.doomscroll.android.core.util.TimeUtils
+import com.doomscroll.android.core.model.MonitoredApp
+import com.doomscroll.android.ui.components.InstalledAppIcon
 import com.doomscroll.android.ui.components.NeumorphicToggle
 import com.doomscroll.android.ui.components.neoExtruded
 import com.doomscroll.android.ui.components.neoExtrudedCircle
@@ -675,12 +677,14 @@ fun DashboardScreen(
                                     .neoRecessed(cornerRadius = 14.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.MovieFilter,
-                                    contentDescription = null,
-                                    tint = CoralPrimary,
-                                    modifier = Modifier.size(22.dp)
-                                )
+                                InstalledAppIcon(packageName = MonitoredApp.INSTAGRAM.packageName, size = 28.dp) {
+                                    Icon(
+                                        imageVector = Icons.Default.MovieFilter,
+                                        contentDescription = null,
+                                        tint = CoralPrimary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
                             }
                             Column {
                                 Text(
@@ -731,12 +735,14 @@ fun DashboardScreen(
                                     .neoRecessed(cornerRadius = 14.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayCircle,
-                                    contentDescription = null,
-                                    tint = CoralPrimary,
-                                    modifier = Modifier.size(22.dp)
-                                )
+                                InstalledAppIcon(packageName = MonitoredApp.YOUTUBE.packageName, size = 28.dp) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayCircle,
+                                        contentDescription = null,
+                                        tint = CoralPrimary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
                             }
                             Column {
                                 Text(

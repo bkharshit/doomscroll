@@ -51,6 +51,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.doomscroll.android.R
+import com.doomscroll.android.ui.components.InstalledAppIcon
 import com.doomscroll.android.ui.components.neoExtruded
 import com.doomscroll.android.ui.components.neoExtrudedCircle
 import com.doomscroll.android.ui.components.neoRecessed
@@ -74,6 +75,7 @@ import com.doomscroll.android.ui.theme.TextSecondarySlate
 @Composable
 fun BlockedScreen(
     appName: String,
+    packageName: String?,
     reason: String,
     breaksRemaining: Int = 2,
     breaksUsedToday: Int = 0,
@@ -203,65 +205,67 @@ fun BlockedScreen(
                                     .neoExtruded(cornerRadius = 14.dp, elevation = 3.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                when {
-                                    appName.contains("Instagram", ignoreCase = true) -> {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(32.dp)
-                                                .background(
-                                                    Brush.linearGradient(
-                                                        listOf(
-                                                            Color(0xFFF09433),
-                                                            Color(0xFFDC2743),
-                                                            Color(0xFFBC1888)
-                                                        )
+                                InstalledAppIcon(packageName = packageName, size = 32.dp) {
+                                    when {
+                                        appName.contains("Instagram", ignoreCase = true) -> {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .background(
+                                                        Brush.linearGradient(
+                                                            listOf(
+                                                                Color(0xFFF09433),
+                                                                Color(0xFFDC2743),
+                                                                Color(0xFFBC1888)
+                                                            )
+                                                        ),
+                                                        RoundedCornerShape(10.dp)
                                                     ),
-                                                    RoundedCornerShape(10.dp)
-                                                ),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.CameraAlt,
-                                                contentDescription = null,
-                                                tint = InfinityWhite,
-                                                modifier = Modifier.size(16.dp)
-                                            )
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CameraAlt,
+                                                    contentDescription = null,
+                                                    tint = InfinityWhite,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
                                         }
-                                    }
-                                    appName.contains("YouTube", ignoreCase = true) -> {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(32.dp)
-                                                .background(
-                                                    Color(0xFFFF0000),
-                                                    RoundedCornerShape(10.dp)
-                                                ),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.PlayArrow,
-                                                contentDescription = null,
-                                                tint = InfinityWhite,
-                                                modifier = Modifier.size(16.dp)
-                                            )
+                                        appName.contains("YouTube", ignoreCase = true) -> {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .background(
+                                                        Color(0xFFFF0000),
+                                                        RoundedCornerShape(10.dp)
+                                                    ),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.PlayArrow,
+                                                    contentDescription = null,
+                                                    tint = InfinityWhite,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
                                         }
-                                    }
-                                    else -> {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(32.dp)
-                                                .background(
-                                                    ObsidianDark,
-                                                    RoundedCornerShape(10.dp)
-                                                ),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Security,
-                                                contentDescription = null,
-                                                tint = InfinityWhite,
-                                                modifier = Modifier.size(16.dp)
-                                            )
+                                        else -> {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .background(
+                                                        ObsidianDark,
+                                                        RoundedCornerShape(10.dp)
+                                                    ),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Security,
+                                                    contentDescription = null,
+                                                    tint = InfinityWhite,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }

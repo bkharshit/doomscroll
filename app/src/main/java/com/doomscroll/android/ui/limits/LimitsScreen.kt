@@ -49,6 +49,7 @@ import com.doomscroll.android.core.model.AppLimit
 import com.doomscroll.android.core.model.LimitPolicy
 import com.doomscroll.android.core.model.MonitoredApp
 import com.doomscroll.android.core.model.UsageStat
+import com.doomscroll.android.ui.components.InstalledAppIcon
 import com.doomscroll.android.ui.components.NeumorphicToggle
 import com.doomscroll.android.core.util.TimeUtils
 import com.doomscroll.android.ui.components.TactileProgressSlider
@@ -355,6 +356,7 @@ fun LimitsScreen(
 
                 AppQuotaCard(
                     appName = appLimit.monitoredApp.displayName,
+                    packageName = appLimit.monitoredApp.packageName,
                     category = appLimit.monitoredApp.packageName,
                     usedMinutes = used,
                     limitMinutes = limit,
@@ -379,6 +381,7 @@ fun LimitsScreen(
 @Composable
 fun AppQuotaCard(
     appName: String,
+    packageName: String,
     category: String,
     usedMinutes: Int,
     limitMinutes: Int,
@@ -418,74 +421,76 @@ fun AppQuotaCard(
                             .neoExtrudedCircle(elevation = 3.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        when {
-                            appName.contains("Instagram", ignoreCase = true) -> {
-                                Box(
-                                    modifier = Modifier
-                                        .size(30.dp)
-                                        .background(
-                                            Brush.linearGradient(
-                                                listOf(
-                                                    Color(0xFFF09433),
-                                                    Color(0xFFDC2743),
-                                                    Color(0xFFBC1888)
-                                                )
+                        InstalledAppIcon(packageName = packageName, size = 30.dp) {
+                            when {
+                                appName.contains("Instagram", ignoreCase = true) -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(30.dp)
+                                            .background(
+                                                Brush.linearGradient(
+                                                    listOf(
+                                                        Color(0xFFF09433),
+                                                        Color(0xFFDC2743),
+                                                        Color(0xFFBC1888)
+                                                    )
+                                                ),
+                                                CircleShape
                                             ),
-                                            CircleShape
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CameraAlt,
-                                        contentDescription = null,
-                                        tint = InfinityWhite,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CameraAlt,
+                                            contentDescription = null,
+                                            tint = InfinityWhite,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
-                            }
-                            appName.contains("YouTube", ignoreCase = true) -> {
-                                Box(
-                                    modifier = Modifier
-                                        .size(30.dp)
-                                        .background(Color(0xFFFF0000), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.PlayArrow,
-                                        contentDescription = null,
-                                        tint = InfinityWhite,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                appName.contains("YouTube", ignoreCase = true) -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(30.dp)
+                                            .background(Color(0xFFFF0000), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = null,
+                                            tint = InfinityWhite,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
-                            }
-                            appName.contains("Reddit", ignoreCase = true) -> {
-                                Box(
-                                    modifier = Modifier
-                                        .size(30.dp)
-                                        .background(Color(0xFFFF4500), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Forum,
-                                        contentDescription = null,
-                                        tint = InfinityWhite,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                appName.contains("Reddit", ignoreCase = true) -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(30.dp)
+                                            .background(Color(0xFFFF4500), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Forum,
+                                            contentDescription = null,
+                                            tint = InfinityWhite,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
-                            }
-                            else -> {
-                                Box(
-                                    modifier = Modifier
-                                        .size(30.dp)
-                                        .background(ObsidianDark, CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = appName.take(1).uppercase(),
-                                        fontWeight = FontWeight.Bold,
-                                        color = InfinityWhite,
-                                        fontSize = 14.sp
-                                    )
+                                else -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(30.dp)
+                                            .background(ObsidianDark, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = appName.take(1).uppercase(),
+                                            fontWeight = FontWeight.Bold,
+                                            color = InfinityWhite,
+                                            fontSize = 14.sp
+                                        )
+                                    }
                                 }
                             }
                         }
