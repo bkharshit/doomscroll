@@ -599,7 +599,7 @@ fun DashboardScreen(
                                 text = when {
                                     state.isStrictLockdown -> "Strict Lockdown is on: no pauses."
                                     state.globalPausesRemaining > 0 -> "Pauses every app. ${state.globalPausesRemaining} left today."
-                                    else -> "No pauses left today. Add one in Settings, or wait for midnight."
+                                    else -> "No pauses left today. Add more in Settings, or wait for midnight."
                                 },
                                 modifier = Modifier.weight(1f),
                                 fontSize = 12.sp,

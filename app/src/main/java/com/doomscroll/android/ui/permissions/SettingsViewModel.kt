@@ -38,7 +38,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setStrictLockdownEnabled(enabled) }
     }
 
-    /** Adds one pause for today. The UI puts this behind a 60 s wait. */
+    /** Adds [MindfulBreakManager.EXTRA_PAUSES_PER_GRANT] pauses for today. The UI puts this behind a 60 s wait. */
     fun addPauseForToday() {
         breakManager.grantExtraGlobalPause(isStrictLockdownEnabled.value)
     }

@@ -25,8 +25,11 @@ Doomscroll is an open-source Android application engineered to help users break 
    - One-tap exit back to Android's Home Launcher (`ACTION_MAIN` + `CATEGORY_HOME`).
 
 4. **"Post Mode" / Mindful Breaks**
-   - Conscious 3, 5, or 10-minute temporary break protocol with intention setting.
-   - Timed countdown with automatic re-enforcement when the session expires.
+   - Conscious Pause from the dashboard: 3, 5 or 10 minutes for every app, 10 per day, after a 10-second breathe and a typed intention.
+   - Need more? Settings → "Add 5 pauses for today" unlocks after a 60-second wait. Extra pauses reset at midnight.
+   - Emergency breaks from the block screen: 2 per app per day, with a growing wait (10 s, then 30 s) and a typed intention from the second one.
+   - Strict Lockdown turns all pauses and breaks off. Turning it off takes a 60-second wait.
+   - Ongoing countdown notification during a break (tap it to end early) and automatic re-enforcement when the break ends.
 
 5. **Modern Jetpack Compose & Material 3 UI**
    - OLED dark-mode first design matching modern digital wellbeing aesthetics.

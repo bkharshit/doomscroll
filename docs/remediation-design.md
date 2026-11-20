@@ -303,8 +303,9 @@ View IDs live in one `RuleSpec` object per app, with a `minVersionCode` and `max
 | Break length | 5 min | 3 / 5 / 10 |
 | Wait before a break starts | 10 s for the first, then +20 s for each later break that day | No |
 | Typed intention before a break | Required from the second break | No |
-| Global pause (dashboard) | 15 min, once per day, then a 60-min cooldown | Length only |
-| Turning off master shield | Behind the same wait-and-type friction; re-enables itself after 60 min unless confirmed again | No |
+| Global pause (dashboard) | 10 per day, 3 / 5 / 10 min each, after a 10 s breathe and a typed intention. *(Revised from "once per day, then a 60-min cooldown".)* | Length only |
+| Extra global pauses | Settings → "Add 5 pauses for today", behind a 60 s wait; repeatable, today only, reset at midnight; refused under Strict Lockdown | No |
+| Turning off master shield | 10 s wait; refused under Strict Lockdown; re-enables itself after 60 min | No |
 
 ### Model and persistence
 

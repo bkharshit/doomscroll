@@ -46,6 +46,8 @@ class MindfulBreakManager(
         const val GLOBAL_KEY = "*"
         /** Extra global pauses granted today (from Settings), stored with the day's counts so they reset at midnight. */
         const val EXTRA_GLOBAL_KEY = "+"
+        /** Global pauses added per Settings request (each request costs a 60 s wait in the UI). */
+        const val EXTRA_PAUSES_PER_GRANT = 5
     }
 
     private val lock = Any()
@@ -116,14 +118,15 @@ class MindfulBreakManager(
     }
 
     /**
-     * Adds one global pause for today only. The UI puts this behind a 60 s wait; Strict Lockdown refuses it.
+     * Adds [EXTRA_PAUSES_PER_GRANT] global pauses for today only. The UI puts this behind a 60 s wait;
+     * Strict Lockdown refuses it.
      */
     fun grantExtraGlobalPause(isStrictLockdown: Boolean = false): Boolean {
         if (isStrictLockdown) return false
         refreshDay()
         synchronized(lock) {
             val extra = _breaksUsedToday.value[EXTRA_GLOBAL_KEY] ?: 0
-            _breaksUsedToday.value = _breaksUsedToday.value + (EXTRA_GLOBAL_KEY to extra + 1)
+            _breaksUsedToday.value = _breaksUsedToday.value + (EXTRA_GLOBAL_KEY to extra + EXTRA_PAUSES_PER_GRANT)
         }
         persistState()
         return true

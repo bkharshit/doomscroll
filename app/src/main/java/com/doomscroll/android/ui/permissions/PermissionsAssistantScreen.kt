@@ -42,6 +42,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.doomscroll.android.domain.limiter.MindfulBreakManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -305,7 +306,7 @@ fun PermissionsAssistantScreen(
                         .padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
                     Text(
-                        text = "Add a pause for today",
+                        text = "Add ${MindfulBreakManager.EXTRA_PAUSES_PER_GRANT} pauses for today",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (isStrictLockdownEnabled) TextMutedSlate else InfinityWhite
@@ -514,10 +515,11 @@ fun PermissionsAssistantScreen(
 
     if (showAddPauseDialog) {
         com.doomscroll.android.ui.components.FrictionConfirmDialog(
-            title = "Add another pause?",
-            message = "Breathe out for a minute first. If you still need it, you'll get one more Conscious Pause for today.",
+            title = "Add more pauses?",
+            message = "Breathe out for a minute first. If you still need them, you'll get " +
+                "${MindfulBreakManager.EXTRA_PAUSES_PER_GRANT} more Conscious Pauses for today.",
             waitSeconds = 60,
-            confirmLabel = "Add pause",
+            confirmLabel = "Add ${MindfulBreakManager.EXTRA_PAUSES_PER_GRANT} pauses",
             dismissLabel = "Never mind",
             onConfirm = {
                 showAddPauseDialog = false
