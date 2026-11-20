@@ -26,6 +26,7 @@ fun FrictionConfirmDialog(
     message: String,
     waitSeconds: Int,
     confirmLabel: String,
+    dismissLabel: String = "Keep protection on",
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -52,7 +53,7 @@ fun FrictionConfirmDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Keep protection on", color = TextDark)
+                Text(dismissLabel, color = TextDark)
             }
         }
     )

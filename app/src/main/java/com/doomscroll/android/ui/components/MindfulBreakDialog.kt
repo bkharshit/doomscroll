@@ -17,12 +17,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.delay
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +47,14 @@ fun MindfulBreakDialog(
 ) {
     var selectedMinutes by remember { mutableIntStateOf(5) }
     var intention by remember { mutableStateOf("") }
+    // 10 s to breathe before the pause can start; with 10 pauses a day, this is the friction.
+    var waitRemaining by remember { mutableIntStateOf(BREATHE_SECONDS) }
+    LaunchedEffect(Unit) {
+        while (waitRemaining > 0) {
+            delay(1000L)
+            waitRemaining--
+        }
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -141,14 +151,20 @@ fun MindfulBreakDialog(
                         onDismiss()
                     },
                     // A typed intention is the friction: no intention, no pause.
-                    enabled = intention.isNotBlank(),
+                    enabled = intention.isNotBlank() && waitRemaining == 0,
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = CoralPrimary),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Start Break", color = InfinityWhite, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (waitRemaining > 0) "Breathe… ${waitRemaining}s" else "Start Break",
+                        color = InfinityWhite,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
     }
 }
+
+private const val BREATHE_SECONDS = 10

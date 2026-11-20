@@ -65,11 +65,11 @@ class BreakPolicyTest {
     fun restoredCounts_fromToday_areHonoured_andStaleOnesIgnored() = runTest {
         val clock = clockAt("2026-11-19T12:00:00Z")
         val today = LocalDate.of(2026, 11, 19).toEpochDay()
-        val todayStore = InMemoryBreakStore(BreakStateCodec.encode(BreakSnapshot(false, 0, null, null, today, mapOf(ig to 2, "*" to 1))))
+        val todayStore = InMemoryBreakStore(BreakStateCodec.encode(BreakSnapshot(false, 0, null, null, today, mapOf(ig to 2, "*" to 4, "+" to 1))))
         val m = MindfulBreakManager(store = todayStore, scope = backgroundScope, clock = clock)
         runCurrent()
         assertEquals(0, m.getBreaksRemaining(ig))
-        assertEquals(0, m.getGlobalPausesRemaining())
+        assertEquals("10 + 1 extra - 4 used", 7, m.getGlobalPausesRemaining())
 
         val staleStore = InMemoryBreakStore(BreakStateCodec.encode(BreakSnapshot(false, 0, null, null, today - 1, mapOf(ig to 2))))
         val m2 = MindfulBreakManager(store = staleStore, scope = backgroundScope, clock = clock)
@@ -84,12 +84,35 @@ class BreakPolicyTest {
         assertFalse("strict lockdown", m.requestGlobalPause(5, "Reply to mom", isStrictLockdown = true))
         assertEquals(0, m.getGlobalPausesRemaining(isStrictLockdown = true))
 
-        assertTrue(m.requestGlobalPause(5, "Reply to mom"))
-        assertTrue(m.isBreakActiveForPackage(ig))
-        m.cancelBreak()
-        assertFalse("one per day", m.requestGlobalPause(5, "Again"))
+        repeat(MindfulBreakManager.MAX_GLOBAL_PAUSES_PER_DAY) { i ->
+            assertTrue("pause ${i + 1}", m.requestGlobalPause(5, "Reply to mom"))
+            assertTrue(m.isBreakActiveForPackage(ig))
+            m.cancelBreak()
+        }
+        assertEquals(10, MindfulBreakManager.MAX_GLOBAL_PAUSES_PER_DAY)
+        assertFalse("daily allowance used up", m.requestGlobalPause(5, "Again"))
         // Emergency allowance is separate from the global pause.
         assertEquals(2, m.getBreaksRemaining(ig))
+    }
+
+    @Test
+    fun extraPauses_addToTodayOnly_andAreRefusedInStrictMode() = runTest {
+        val clock = clockAt("2026-11-19T20:00:00Z")
+        val m = MindfulBreakManager(store = null, scope = backgroundScope, clock = clock)
+        repeat(10) { m.requestGlobalPause(3, "x"); m.cancelBreak() }
+        assertEquals(0, m.getGlobalPausesRemaining())
+
+        assertFalse(m.grantExtraGlobalPause(isStrictLockdown = true))
+        assertTrue(m.grantExtraGlobalPause())
+        assertEquals(1, m.getGlobalPausesRemaining())
+        assertEquals(11, m.globalPauseAllowance())
+        assertTrue(m.requestGlobalPause(3, "one more"))
+        m.cancelBreak()
+        assertEquals(0, m.getGlobalPausesRemaining())
+
+        clock.advanceHours(5) // next day: extras don't carry over
+        assertEquals(10, m.globalPauseAllowance())
+        assertEquals(10, m.getGlobalPausesRemaining())
     }
 
     @Test

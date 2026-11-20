@@ -89,6 +89,8 @@ fun PermissionsAssistantScreen(
     var showStrictOffDialog by remember { mutableStateOf(false) }
 
     val isStrictLockdownEnabled by viewModel.isStrictLockdownEnabled.collectAsState()
+    val pauseAllowance by viewModel.pauseAllowance.collectAsState()
+    var showAddPauseDialog by remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -268,6 +270,48 @@ fun PermissionsAssistantScreen(
                     context.startActivity(PermissionHelper.getBatteryOptimizationSettingsIntent(context))
                 }
             )
+        }
+
+        // Conscious Pauses: today's allowance, plus a way to add one after a 60 s wait
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .neoExtruded(cornerRadius = 22.dp)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Conscious Pauses",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextDark
+                )
+                Text(
+                    text = if (isStrictLockdownEnabled) {
+                        "Strict Lockdown is on, so pauses are off."
+                    } else {
+                        "${pauseAllowance.remaining} of ${pauseAllowance.allowance} left today. Resets at midnight."
+                    },
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = TextMutedSlate
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (isStrictLockdownEnabled) TactileSurfaceVariant else CoralPrimary)
+                        .clickable(enabled = !isStrictLockdownEnabled) { showAddPauseDialog = true }
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = "Add a pause for today",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isStrictLockdownEnabled) TextMutedSlate else InfinityWhite
+                    )
+                }
+            }
         }
 
         // Deep Obsidian Strict Lockdown Mode Card
@@ -466,6 +510,21 @@ fun PermissionsAssistantScreen(
         item {
             Spacer(modifier = Modifier.height(160.dp))
         }
+    }
+
+    if (showAddPauseDialog) {
+        com.doomscroll.android.ui.components.FrictionConfirmDialog(
+            title = "Add another pause?",
+            message = "Breathe out for a minute first. If you still need it, you'll get one more Conscious Pause for today.",
+            waitSeconds = 60,
+            confirmLabel = "Add pause",
+            dismissLabel = "Never mind",
+            onConfirm = {
+                showAddPauseDialog = false
+                viewModel.addPauseForToday()
+            },
+            onDismiss = { showAddPauseDialog = false }
+        )
     }
 
     if (showStrictOffDialog) {

@@ -18,7 +18,8 @@ import java.time.LocalDate
  * Rationed, persisted breaks.
  *
  * - Emergency breaks (from the block screen) cover one app, [DEFAULT_MAX_BREAKS_PER_APP] per app per day.
- * - A global pause (from the dashboard) covers every app, [MAX_GLOBAL_PAUSES_PER_DAY] per day, and needs a typed intention.
+ * - A global pause (from the dashboard) covers every app, [MAX_GLOBAL_PAUSES_PER_DAY] per day plus any extra
+ *   granted today ([grantExtraGlobalPause]), and needs a typed intention.
  * - Strict Lockdown allows neither.
  * - Allowances reset at local midnight, including while the process stays alive.
  */
@@ -41,8 +42,10 @@ class MindfulBreakManager(
 ) {
     companion object {
         const val DEFAULT_MAX_BREAKS_PER_APP = 2
-        const val MAX_GLOBAL_PAUSES_PER_DAY = 1
+        const val MAX_GLOBAL_PAUSES_PER_DAY = 10
         const val GLOBAL_KEY = "*"
+        /** Extra global pauses granted today (from Settings), stored with the day's counts so they reset at midnight. */
+        const val EXTRA_GLOBAL_KEY = "+"
     }
 
     private val lock = Any()
@@ -103,7 +106,27 @@ class MindfulBreakManager(
         if (isStrictLockdown) return 0
         refreshDay()
         val used = _breaksUsedToday.value[GLOBAL_KEY] ?: 0
-        return (MAX_GLOBAL_PAUSES_PER_DAY - used).coerceAtLeast(0)
+        return (globalPauseAllowance() - used).coerceAtLeast(0)
+    }
+
+    /** Today's global pause allowance: the daily amount plus extras granted today. */
+    fun globalPauseAllowance(): Int {
+        refreshDay()
+        return MAX_GLOBAL_PAUSES_PER_DAY + (_breaksUsedToday.value[EXTRA_GLOBAL_KEY] ?: 0)
+    }
+
+    /**
+     * Adds one global pause for today only. The UI puts this behind a 60 s wait; Strict Lockdown refuses it.
+     */
+    fun grantExtraGlobalPause(isStrictLockdown: Boolean = false): Boolean {
+        if (isStrictLockdown) return false
+        refreshDay()
+        synchronized(lock) {
+            val extra = _breaksUsedToday.value[EXTRA_GLOBAL_KEY] ?: 0
+            _breaksUsedToday.value = _breaksUsedToday.value + (EXTRA_GLOBAL_KEY to extra + 1)
+        }
+        persistState()
+        return true
     }
 
     /** Emergency breaks used today for [packageName]. */
@@ -134,7 +157,7 @@ class MindfulBreakManager(
         isStrictLockdown: Boolean = false
     ): Boolean {
         if (intention.isBlank()) return false
-        return spend(GLOBAL_KEY, MAX_GLOBAL_PAUSES_PER_DAY, isStrictLockdown) {
+        return spend(GLOBAL_KEY, globalPauseAllowance(), isStrictLockdown) {
             startBreak(durationMinutes, null, intention.trim())
         }
     }
