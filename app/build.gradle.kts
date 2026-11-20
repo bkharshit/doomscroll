@@ -23,14 +23,26 @@ android {
         }
     }
 
+    // Release signing comes from ~/.gradle/gradle.properties (or the environment) and is skipped
+    // when incomplete, so no key material or password lives in the repository (R26, D10).
+    fun signingValue(property: String, env: String): String? =
+        (project.findProperty(property) as String?)?.takeIf { it.isNotBlank() }
+            ?: System.getenv(env)?.takeIf { it.isNotBlank() }
+
+    val releaseStoreFile = (signingValue("DOOMSCROLL_STORE_FILE", "KEYSTORE_FILE")?.let { file(it) }
+        ?: file("release.keystore")).takeIf { it.exists() }
+    val releaseStorePassword = signingValue("DOOMSCROLL_STORE_PASSWORD", "KEYSTORE_PASSWORD")
+    val releaseKeyAlias = signingValue("DOOMSCROLL_KEY_ALIAS", "KEY_ALIAS") ?: "doomscroll"
+    val releaseKeyPassword = signingValue("DOOMSCROLL_KEY_PASSWORD", "KEY_PASSWORD")
+    val canSignRelease = releaseStoreFile != null && releaseStorePassword != null && releaseKeyPassword != null
+
     signingConfigs {
-        create("release") {
-            val keystoreFile = file("release.keystore")
-            if (keystoreFile.exists()) {
-                storeFile = keystoreFile
-                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "***REMOVED***"
-                keyAlias = System.getenv("KEY_ALIAS") ?: "doomscroll"
-                keyPassword = System.getenv("KEY_PASSWORD") ?: "***REMOVED***"
+        if (canSignRelease) {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
         }
     }
@@ -39,9 +51,8 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            val releaseSigning = signingConfigs.getByName("release")
-            if (releaseSigning.storeFile != null) {
-                signingConfig = releaseSigning
+            if (canSignRelease) {
+                signingConfig = signingConfigs.getByName("release")
             }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
