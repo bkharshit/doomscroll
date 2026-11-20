@@ -57,10 +57,10 @@ class ReelsBypassTest {
     }
 
     @Test
-    fun backThatKeepsFailing_escalatesToHome_neverPasses() {
+    fun openingReelsFromTheFeedRepeatedly_alwaysJustGoesBack_neverLeavesTheApp() {
         val engine = InterceptionEngine()
-        val actions = (0 until 6).map { i -> (engine.evaluate(reelFromFeed(), i * 1_500L) as Decision.Act).action }
-        assertEquals(listOf(Action.Back, Action.Back, Action.Home, Action.Back, Action.Back, Action.Home), actions)
+        val actions = (0 until 8).map { i -> (engine.evaluate(reelFromFeed(), i * 1_500L) as Decision.Act).action }
+        assertEquals(List(8) { Action.Back }, actions)
     }
 
     @Test

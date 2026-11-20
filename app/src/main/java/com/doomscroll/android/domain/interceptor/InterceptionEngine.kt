@@ -9,11 +9,8 @@ class InterceptionEngine(
     )
 ) {
     private val lastActionTimestamps = ConcurrentHashMap<String, Long>()
-    private val backActionHistory = ConcurrentHashMap<String, MutableList<Long>>()
 
     private val actionCooldownMillis = 1000L
-    private val loopWindowMillis = 10_000L
-    private val loopThresholdCount = 3
 
     fun shouldProcessPackage(packageName: String): Boolean {
         return rules.any { it.canHandle(packageName) }
@@ -26,12 +23,12 @@ class InterceptionEngine(
 
     /**
      * Never returns [Decision.Pass] while the rule detects short-form content: repeated attempts
-     * (tapping Reels again and again) must not wear the blocker down.
+     * (tapping Reels again and again) must not wear the blocker down. Within the cooldown after an
+     * action it returns [Decision.RetryAfter] so the caller re-checks once the cooldown ends.
      *
-     * - Within the cooldown after an action, returns [Decision.RetryAfter] so the caller re-checks.
-     * - If system Back has been used [loopThresholdCount] times within [loopWindowMillis] and the
-     *   content is still there, Back isn't working on this screen, so escalate to Home rather than
-     *   pressing Back again (which could also exit the app repeatedly). Tab clicks never escalate.
+     * There is deliberately no escalation (e.g. to Home) after repeated actions: opening one Reel
+     * after another means each Back worked, and leaving Instagram for that is wrong. If Back ever
+     * fails to close the content, the retry simply presses it again a second later.
      */
     fun evaluate(screen: Screen, currentTimeMillis: Long = System.currentTimeMillis()): Decision {
         val rule = ruleFor(screen.packageName) ?: return Decision.Pass
@@ -44,17 +41,6 @@ class InterceptionEngine(
             return Decision.RetryAfter(actionCooldownMillis - sinceLast)
         }
         lastActionTimestamps[rule.id] = currentTimeMillis
-
-        if (!decision.action.usesSystemBack()) return decision
-
-        val history = backActionHistory.getOrPut(rule.id) { mutableListOf() }
-        val loopDetected = synchronized(history) {
-            history.removeAll { currentTimeMillis - it > loopWindowMillis }
-            history.add(currentTimeMillis)
-            (history.size >= loopThresholdCount).also { if (it) history.clear() }
-        }
-        return if (loopDetected) Decision.Act("${decision.reason} (Back loop: going Home)", Action.Home) else decision
+        return decision
     }
-
-    private fun Action.usesSystemBack(): Boolean = this is Action.Back || this is Action.ClickInAppBack
 }
